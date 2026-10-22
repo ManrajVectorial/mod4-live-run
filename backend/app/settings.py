@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     # Retrieval (D0, D1, D2, D3)
     embedding_model: str | None = None
     embedding_dimensions: int | None = None
+    embedding_timeout_seconds: float | None = None
     chunk_size: int | None = None
     chunk_overlap: int | None = None
     refusal_threshold: float | None = None
@@ -77,6 +78,14 @@ class Settings(BaseSettings):
         if value is None or value.is_absolute():
             return value
         return REPO_ROOT / value
+
+
+def require(settings: Settings, *fields: str) -> dict[str, Any]:
+    """The named settings, or a SettingsError listing every one that is unset."""
+    missing = [f.upper() for f in fields if getattr(settings, f) is None]
+    if missing:
+        raise SettingsError("Missing settings: " + ", ".join(missing) + ". See .env.example.")
+    return {f: getattr(settings, f) for f in fields}
 
 
 def load_settings(**overrides: Any) -> Settings:

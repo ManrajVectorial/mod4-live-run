@@ -1,6 +1,6 @@
 # T1-F1 — Load the documents
 
-**Status:** todo
+**Status:** done (2026-10-23)
 **Parent:** [T1](T1.md)
 **Decisions it waits on:** D0, D1
 
@@ -48,3 +48,45 @@ fixes them (T1-assumptions A38, A39).
 - Choosing D0 or D1: they are decided at planning, not in this ticket
 
 ## Evidence
+
+**Done-when, run against Docker Compose Qdrant with real OpenRouter embeddings
+(`openai/text-embedding-3-small`, 1,536 dimensions):**
+
+```
+$ python -m app.ingest && echo "total after run 1: $(count '{"exact":true}')"
+Indexed 5 documents as 130 passages (19 from superseded documents) into 'policy_passages' at 2026-10-22T23:57:12+00:00.
+total after run 1: 130
+$ python -m app.ingest && echo "total after run 2: $(count '{"exact":true}')"
+Indexed 5 documents as 130 passages (19 from superseded documents) into 'policy_passages' at 2026-10-22T23:57:18+00:00.
+total after run 2: 130
+$ echo "superseded: $(count '{"exact":true,"filter":{"must":[{"key":"status","match":{"value":"superseded"}}]}}')"
+superseded: 19
+$ git status --porcelain backend/corpus
+(prints nothing)
+```
+
+`count` is `curl -X POST http://127.0.0.1:6333/collections/policy_passages/points/count`.
+
+**Tests:** `cd backend && python -m pytest tests/test_ingest.py` gives 12 passed. These cover
+I1 to I11, run against an in-memory Qdrant with a fake embedder. Whole suite: 33 backend and
+41 CI tests passed; ruff, bandit and the scope check are clean.
+
+**D1 size cap (set at F1, from measured section lengths):** `CHUNK_SIZE=1200` characters. The
+130 real sections run from 40 to 1,001 characters; the longest is Records Retention §4.1, and
+the median is 217. 1,200 is the smallest round number that keeps every current section
+whole, so the cap only applies to sections added later.
+
+**Simplest options taken where the plan was silent:**
+- `CHUNK_SIZE` is measured in characters.
+- `EMBEDDING_TIMEOUT_SECONDS=5` is a new setting. The plan named no embedding timeout.
+- Every `## N.` and `### N.N` heading starts a section. A `##` with no subsections (for
+  example T&E §8) is its own section.
+- The preamble before the first numbered heading (title, owner line, superseded banner) is
+  not indexed. The document's status travels in each passage's payload instead.
+- What gets embedded is the section heading ("4.2 Approval thresholds") followed by the
+  passage text, per D1. The payload `text` is the passage alone.
+- A failed run writes nothing, because every vector is computed before any write (I9). After
+  a successful run, points for passages no longer in the corpus are deleted.
+- The fixture for I2 is a modified copy of the corpus in a temporary folder, outside
+  `backend/corpus/` (A14). There is no `tests/fixtures/` folder.
+- Pins are in `backend/requirements*.txt`, not `pyproject.toml` (Task 0).

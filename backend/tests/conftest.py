@@ -3,8 +3,12 @@
 - an in-memory vector store (qdrant-client's local mode)
 - an in-memory database (SQLite, which SQLAlchemy supports with no extra library)
 - a fake model that answers, and a failing model that raises
+- a fake embedder: deterministic bag-of-words vectors, so similar text scores similarly
 """
 
+import hashlib
+import math
+import re
 import time
 from collections.abc import Iterator
 
@@ -44,6 +48,42 @@ class SlowProbe:
 
     def check(self) -> None:
         time.sleep(self.seconds)
+
+
+TEST_DIMENSIONS = 64
+
+
+class FakeEmbedder:
+    """Hashes each word into one of `dimensions` buckets and normalises: shared words, high
+    cosine similarity. Deterministic across runs, and never calls the network."""
+
+    def __init__(self, dimensions: int = TEST_DIMENSIONS) -> None:
+        self.dimensions = dimensions
+        self.calls = 0
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        self.calls += 1
+        return [self._vector(t) for t in texts]
+
+    def _vector(self, text: str) -> list[float]:
+        vector = [0.0] * self.dimensions
+        for word in re.findall(r"[a-z0-9£]+", text.lower()):
+            bucket = int(hashlib.sha256(word.encode()).hexdigest(), 16) % self.dimensions
+            vector[bucket] += 1.0
+        norm = math.sqrt(sum(v * v for v in vector)) or 1.0
+        return [v / norm for v in vector]
+
+
+class FailingEmbedder:
+    """Stands in for an embedding provider that fails part-way through."""
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        raise ConnectionError("embedding provider failed (test fake)")
+
+
+@pytest.fixture
+def fake_embedder() -> FakeEmbedder:
+    return FakeEmbedder()
 
 
 @pytest.fixture
