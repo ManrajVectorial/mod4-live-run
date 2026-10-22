@@ -1,7 +1,9 @@
 {
   "permissions": {
     "deny": [
-      "Edit(/backend/corpus/**)"
+      "Edit(/backend/corpus/**)",
+      "Edit(/docs/PRD.md)",
+      "Edit(/docs/features.md)"
     ]
   }
 }

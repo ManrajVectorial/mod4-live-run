@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **Draft v0.1, awaiting approval.** Once approved, this file is protected (AGENTS.md rule 1) |
+| **Status** | **v1.0, reviewed and approved 2026-10-23. Protected** (AGENTS.md rule 1; Edit denied in `.claude/settings.json`) |
 | **Source** | `docs/PRD.md` §4 and §9 |
 
 Eight features, in build order:
@@ -72,9 +72,9 @@ and Reset. Light theme.
 
 | | |
 |---|---|
-| **Requirements** | REQ-U1, U2, U3, U4, U5, U6, U7, U8, U9, U10, U11, U12, U13 · REQ-A10 |
+| **Requirements** | REQ-U1, U2, U3, U4, U5, U6, U7, U8, U9, U10, U11, U12, U13, U16, U17 · REQ-A10 |
 | **Decisions** | D4, D5, D7 |
-| **Done when** | With API and web running, open `http://localhost:3000`, ask Q1 and see an answer with an expandable T&E v3.1 §4.2 citation, the notice and the indexed date; ask Q11 and see a refusal that looks clearly different; the top bar shows only "Policy Assistant" and Reset |
+| **Done when** | With API and web running, open `http://localhost:3000`, ask Q1 and see an answer with an expandable citation reading Travel and Expense Policy, §4.2 Approval thresholds, v3.1, plus the notice and the indexed date; any v3.0 passage shown carries a "Superseded" label; ask Q11 and see a refusal that looks clearly different; the top bar shows only "Policy Assistant" and Reset |
 
 ---
 
@@ -132,11 +132,14 @@ answer time, and a History link in the top bar.
 | | REQ-A6, A7 | F7 |
 | | REQ-A8, A9 | F8 |
 | | REQ-A10 | F5 |
-| Interface | REQ-U1 – U13 | F5 |
+| Interface | REQ-U1 – U13, U16, U17 | F5 |
 | | REQ-U14 | F7 |
 | | REQ-U15 | F8 |
 | Non-functional | NFR-2, 3, 4, 6 | F3 |
 | | NFR-1, 5 | F4 |
 
-There are 74 requirements: 11 I, 8 R, 11 G, 8 C, 5 B, 10 A, 15 U and 6 NFR. Each appears
+There are 76 requirements: 11 I, 8 R, 11 G, 8 C, 5 B, 10 A, 17 U and 6 NFR. Each appears
 exactly once.
+
+REQ-U16 and REQ-U17 are owned by F5, but F7 and F8 also display citations and passages. Their
+tests must keep both passing.

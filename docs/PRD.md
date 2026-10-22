@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | **Draft v0.1, awaiting approval.** Once approved, this file is protected (AGENTS.md rule 1) |
+| **Status** | **v1.0, reviewed and approved 2026-10-23. Protected** (AGENTS.md rule 1; Edit denied in `.claude/settings.json`) |
 | **Source** | `docs/project-brief.md` v1.0, `backend/corpus/MANIFEST.yaml`, `backend/corpus/EVALUATION.md` |
 | **Features** | `docs/features.md` assigns every requirement here to exactly one feature |
 | **Stack** | Python 3.12 FastAPI API · Qdrant (vector search) · Postgres · Next.js front end · OpenRouter (chat and embedding models) · GitHub Actions · Railway |
@@ -113,8 +113,8 @@ Each requirement is a single sentence that either passes or fails. Feature assig
 |---|---|
 | REQ-I1 | Ingestion indexes exactly the files listed under `documents:` in `MANIFEST.yaml` (five), and no other file in `backend/corpus/` (`EVALUATION.md`, `FICTION-AUDIT.md` and `MANIFEST.yaml` are never indexed) |
 | REQ-I2 | Ingestion stops with an error naming the file if a document's front matter (`id`, `version`, `status`, `effective`) disagrees with its MANIFEST entry |
-| REQ-I3 | No passage spans two numbered sections (for example, 4.2 and 4.3). Within a section, passages follow D1 **[ASSUMED: section boundaries are hard limits]** |
-| REQ-I4 | A Markdown table is never split across passages **[ASSUMED]** |
+| REQ-I3 | Every passage is cut exactly as D1 decides |
+| REQ-I4 | Every passage records the number and title of the section it came from (for example, `4.2` and `Approval thresholds`) |
 | REQ-I5 | Every passage is stored in Qdrant with every payload field listed in §7 |
 | REQ-I6 | Passages are embedded with `EMBEDDING_MODEL`, and ingestion stops with an error if the returned vector length differs from `EMBEDDING_DIMENSIONS` |
 | REQ-I7 | Superseded documents are indexed, not excluded, and each of their passages carries `status: superseded`, `superseded_by` and `superseded_on` (MANIFEST `superseded_version`) |
@@ -131,7 +131,7 @@ Each requirement is a single sentence that either passes or fails. Feature assig
 | REQ-R2 | Retrieved passages come back in descending score order, with each one's score and full §7 payload, and ties are broken by `passage_id` so the same question always returns the same order |
 | REQ-R3 | Every retrieved passage carries its document `status`, and superseded passages are handled exactly as D4 decides |
 | REQ-R4 | An evaluation command runs all thirteen `EVALUATION.md` questions and writes a results table (top score, whether the expected section is in the top three, outcome) to a file under `tickets/` |
-| REQ-R5 | A question whose top retrieval score is below `REFUSAL_THRESHOLD` gets `status: refused`. A score equal to or above the threshold proceeds **[ASSUMED: the boundary is inclusive, i.e. ≥]** |
+| REQ-R5 | A question whose top retrieval score does not clear `REFUSAL_THRESHOLD`, as D2 defines clearing it, gets `status: refused` |
 | REQ-R6 | The refusal rule runs before any chat-model call, and a refused request makes zero chat-model calls **[ASSUMED: "model call" means the chat model; embedding the question is necessarily a model call and comes first]** |
 | REQ-R7 | `REFUSAL_THRESHOLD` has no default in code, and the API refuses to start if it is unset or not a number |
 | REQ-R8 | At the chosen threshold, Q11–Q13 are refused and Q1–Q10 are not refused with the expected section in the top three. Any shortfall is recorded, with the score distribution, in the D2 decision record |
@@ -195,13 +195,13 @@ Each requirement is a single sentence that either passes or fails. Feature assig
 | ID | Requirement |
 |---|---|
 | REQ-U1 | `/` shows a labelled question box and an Ask button, and pressing Enter submits **[ASSUMED]** |
-| REQ-U2 | An `answered` response shows the answer, and under it each citation's document title, version and section number and title |
+| REQ-U2 | An `answered` response shows the answer with its citations under it |
 | REQ-U3 | Each citation can be expanded in place to show the passage text, without leaving the page (brief §4, A3) |
 | REQ-U4 | A `refused` response looks unmistakably different from an answer and shows the D5 refusal text |
 | REQ-U5 | A `degraded` response says that no answer was composed, and shows the retrieved passages as sources |
 | REQ-U6 | Every `answered` and `degraded` response shows a notice that this is what the policy says, not a decision, and that exceptions go to a person (brief §8) |
 | REQ-U7 | Every `answered` and `degraded` response shows the date the corpus was indexed |
-| REQ-U8 | A citation from a superseded document is marked as superseded, as D4 decides |
+| REQ-U8 | Beyond the label REQ-U17 requires, superseded citations are shown, hidden or flagged as D4 decides |
 | REQ-U9 | The top bar shows "Policy Assistant" and a Reset button, and Reset clears the page |
 | REQ-U10 | Until F7 and F8 are built, the top bar shows no History or Corpus link |
 | REQ-U11 | Every page uses the light theme, whatever the operating system's colour setting |
@@ -209,6 +209,8 @@ Each requirement is a single sentence that either passes or fails. Feature assig
 | REQ-U13 | The ask page works at 375 px wide with no horizontal scrolling **[ASSUMED]** |
 | REQ-U14 | Once `/corpus` exists, the top bar shows a Corpus link |
 | REQ-U15 | Once `/history` exists, the top bar shows a History link |
+| REQ-U16 | Every citation, wherever it appears (answered and degraded results, history, corpus links), shows the document title, the section number and title, and the document version |
+| REQ-U17 | Superseded text is never presented as current: every passage or citation from a superseded document carries a visible "Superseded" label, and no answer states anything from a superseded passage without saying it is superseded |
 
 ---
 
@@ -254,15 +256,15 @@ Request:
       "section": "4.2",
       "section_title": "Approval thresholds",
       "text": "The following thresholds apply to a single claim: …",
-      "score": 0.81
+      "score": <number>
     }
   ],
   "meta": {
     "prompt_version": "answer-v1",
     "model": "<value of CHAT_MODEL as reported by the provider>",
-    "top_score": 0.81,
-    "threshold": 0.55,
-    "retrieved": 5,
+    "top_score": <number>,
+    "threshold": <REFUSAL_THRESHOLD>,
+    "retrieved": <int>,
     "corpus_indexed_at": "2026-10-23T09:00:00Z",
     "latency_ms": 2140
   },
@@ -274,7 +276,7 @@ Request:
   the `[n]` in `answer` **[ASSUMED]**.
 - The list is flat. D7 decides how citations are grouped for display. If D7 needs grouping
   inside the API, this shape changes before approval.
-- The numbers in these examples are illustrative, not decided values.
+- `<number>`, `<int>` and `<REFUSAL_THRESHOLD>` stand for values that depend on D0–D3. Those decisions are ours, at the planning stage, so no example here carries a number for them.
 
 **Response 200: refused**
 
@@ -289,13 +291,13 @@ Request:
     "message": "<D5 refusal text>"
   },
   "degraded": null,
-  "sources": [],
+  "sources": "<per D5: empty, or the nearest passages>",
   "meta": {
     "prompt_version": null,
     "model": null,
-    "top_score": 0.31,
-    "threshold": 0.55,
-    "retrieved": 5,
+    "top_score": <number>,
+    "threshold": <REFUSAL_THRESHOLD>,
+    "retrieved": <int>,
     "corpus_indexed_at": "2026-10-23T09:00:00Z",
     "latency_ms": 410
   },
@@ -322,9 +324,9 @@ The field is always present.
   "meta": {
     "prompt_version": null,
     "model": null,
-    "top_score": 0.81,
-    "threshold": 0.55,
-    "retrieved": 5,
+    "top_score": <number>,
+    "threshold": <REFUSAL_THRESHOLD>,
+    "retrieved": <int>,
     "corpus_indexed_at": "…",
     "latency_ms": 380
   },
@@ -358,7 +360,7 @@ The field is always present.
       "supersedes": "3.0",
       "superseded_by": null,
       "superseded_on": null,
-      "passage_count": 42,
+      "passage_count": <int>,
       "indexed_at": "2026-10-23T09:00:00Z"
     }
   ]
@@ -423,7 +425,7 @@ not specified for this build **[ASSUMED]**.
       "refusal": null,
       "degraded": null,
       "sources": [ { "…": "as stored at answer time" } ],
-      "meta": { "prompt_version": "answer-v1", "model": "…", "top_score": 0.81, "threshold": 0.55, "retrieved": 5, "corpus_indexed_at": "…", "latency_ms": 2140 },
+      "meta": { "prompt_version": "answer-v1", "model": "…", "top_score": <number>, "threshold": <REFUSAL_THRESHOLD>, "retrieved": <int>, "corpus_indexed_at": "…", "latency_ms": 2140 },
       "created_at": "…"
     }
   ]
@@ -581,7 +583,7 @@ missing variable without printing any value.
 | `CHUNK_OVERLAP` | D1 | |
 | `REFUSAL_THRESHOLD` | D2 | |
 | `RETRIEVAL_TOP_K` | D3 | |
-| `CONVERSATION_CONTEXT_TURNS` | D8 (name may change with the decision) | |
+| *(named when D8 is decided)* | D8: how much conversation a follow-up sees | |
 | `MAX_QUESTION_CHARS` | REQ-A3 | |
 | `QDRANT_URL` | Vector store | |
 | `QDRANT_API_KEY` | Vector store key | **yes** |
@@ -623,15 +625,38 @@ record goes in `tickets/`.
 | ID | Decision | What depends on it | Evidence to hand |
 |---|---|---|---|
 | **D0** | Embedding model and dimensions | Ingestion, retrieval, the Qdrant vector size, every score that D2 is tuned on (changing D0 means re-indexing and re-tuning D2) | Stack fixes OpenRouter as provider. *If the embedding provider is down, retrieval is down too, which limits what the kill switch can keep working (brief §8 constraint).* |
-| **D1** | Chunk size and overlap | Passage boundaries, score distribution | Sections run from one line to a large table (for example T&E §4.2, KYC §6.4) |
-| **D2** | The refusal threshold, and how we pick it | REQ-R5, R8, S5 | `EVALUATION.md` requires a recorded score distribution over all thirteen. Q11 is "inferable, not absent" and Q12 has adjacent KYC material, so both may score moderately |
+| **D1** | Chunk size and overlap | REQ-I3, passage boundaries, score distribution | Sections run from one line to a large table (for example T&E §4.2, KYC §6.4). This also covers whether a passage may cross a numbered section and whether a table may be split |
+| **D2** | The refusal threshold, and how we pick it | REQ-R5, R8, S5 | `EVALUATION.md` requires a recorded score distribution over all thirteen. Q11 is "inferable, not absent" and Q12 has adjacent KYC material, so both may score moderately. This also covers what "clearing" means at the boundary. The brief (§9) says "nothing above threshold" refuses |
 | **D3** | How many passages to retrieve (top-K) | Prompt size, latency, whether Q10's two sections both arrive | Q8 and Q10 each expect two sections |
-| **D4** | Superseded policies: shown, hidden or flagged | Retrieval, answer wording, citation display, `/corpus` | T&E v3.0 says £50, v3.1 says £75. v3.0 still governs expenses incurred before 1 April 2026 (its own banner). REQ-I7 requires it to be indexed either way |
+| **D4** | Superseded policies: shown, hidden or flagged | Retrieval, answer wording, citation display, `/corpus` | T&E v3.0 says £50, v3.1 says £75. v3.0 still governs expenses incurred before 1 April 2026 (its own banner). REQ-I7 requires it to be indexed either way. Whatever D4 decides, REQ-U17 holds: superseded text is never presented as current |
 | **D5** | What a refusal says | REQ-U4, the refusal payload, whether nearest passages are shown | The brief §12 example points at **Compliance**. MANIFEST and `EVALUATION.md` Q11 point at **Group Finance**. These differ |
-| **D6** | What happens when two policies conflict | REQ-G10, Q10 | Records Retention §4.1 (7 years) against Outsourcing §6.4 (destroy within 5). Outsourcing §6.4 says escalate jointly and do not resolve locally. Brief Q4 says "resist the temptation to answer it in code" |
+| **D6** | What happens when two policies conflict | REQ-G10, Q10 | The known clash, worked through below. Brief Q4 says "resist the temptation to answer it in code" |
 | **D7** | How citations are grouped | `sources` shape, ask-page layout | Brief §10: the "clickable, deduplicated citation panel" is outside the slice |
 | **D8** | How much conversation a follow-up sees | REQ-C4, prompt size | — |
 | **D9** | Whether a follow-up searches again, and on what | REQ-C5 | Rewriting a follow-up with the chat model before retrieval would put a chat-model call ahead of the refusal rule, which conflicts with REQ-R6 |
+
+### D6 worked example: the clash we already know about (undecided)
+
+| | Records Retention and Data Handling v4.0 | Outsourcing and Third-Party Risk v1.8 |
+|---|---|---|
+| **Section** | §4.1 General table, client correspondence | §6.4 Return and destruction on exit |
+| **Requires** | Keep client correspondence **7 years** | Provider destroys all copies **within 5 years** |
+| **Clock starts** | End of the client relationship | Termination of the outsourcing arrangement |
+| **Status** | Current (effective 2026-02-01) | Current (effective 2026-03-01) |
+| **Related text** | §4.4: records held by a third party remain the Bank's and are subject to §4.1 | Note to §6.4: where the two cannot both be satisfied, "escalate to Group Legal and Group Operational Risk jointly. Do not resolve the conflict locally" |
+
+**Where they collide.** A provider holds the only copy of a client's correspondence, and the
+arrangement ends. Outsourcing requires that copy destroyed within five years. Records
+Retention requires it kept for seven years after the client relationship ends, which may be
+later still. Both cannot be met. This is `EVALUATION.md` Q10 and MANIFEST `known_conflict`.
+
+**Traps to avoid.**
+- Records Retention §4.3 ("the longer period applies") governs a record that falls into two
+  categories *within that policy*. It is not a rule for choosing between two policies.
+- The two clocks start at different events, so "7 is longer than 5" is not the whole clash.
+
+**What D6 must settle, at planning:** what the response does when retrieved passages from two
+current policies conflict, as in this case. No option is chosen here.
 
 **Open questions owned outside the team** (brief §6, not ours to decide, but they block release):
 
