@@ -1,0 +1,8 @@
+{
+  "name": "sharp",
+  "version": "0.0.0-policy-assistant-stub",
+  "description": "Empty stand-in for sharp, whose native image library is LGPL-3.0-or-later (AGENTS.md rule 7). Image optimisation is off in next.config.ts, so Next never loads it.",
+  "private": true,
+  "license": "MIT",
+  "main": "index.js"
+}

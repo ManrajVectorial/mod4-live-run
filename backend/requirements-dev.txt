@@ -1,0 +1,7 @@
+# Development and CI tools, pinned as approved in tickets/T1-plan.md §2.
+-r requirements.txt
+pytest==9.1.1
+httpx==0.28.1
+ruff==0.17.2
+bandit==1.9.4
+pip-licenses==5.5.5

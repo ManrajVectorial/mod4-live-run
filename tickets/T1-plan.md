@@ -46,6 +46,13 @@ Versions are the latest releases on PyPI and npm, checked 2026-10-23.
   (Apache-2.0).
 - **Transitive dependencies** are covered by the licence check, which fails on GPL, AGPL, LGPL,
   SSPL or EUPL.
+- **`sharp` is replaced** (approved by the product owner, 2026-10-23, during Task 0). Next 16
+  pulls in `sharp` as an optional dependency for image optimisation, and its native library
+  (`@img/sharp-*`, libvips) is LGPL-3.0-or-later. An npm `overrides` entry in
+  `frontend/package.json` points `sharp` at an empty stand-in, `frontend/vendor/no-sharp` (MIT,
+  ours), which throws if anything ever loads it. Image optimisation is off
+  (`images.unoptimized` in `next.config.ts`). We don't use the Image component. Re-enabling
+  image optimisation needs approval.
 
 ## 3. Tasks in order
 
