@@ -20,6 +20,12 @@
 | D8 | The last 5 messages, counting questions and answers separately (`CONVERSATION_CONTEXT_MESSAGES`) | Staff often refer back more than one turn. |
 | D9 | Search again every turn, on the new question joined with the one before it (`FOLLOWUP_QUERY_QUESTIONS`). The refusal rule judges the joined text. **Measured at F6.** If the partner-flight check fails there, that is a planned stop | A short follow-up like "and for Singapore?" finds nothing on its own, and limiting it to the one question before keeps old topics from slipping into new answers. |
 
+**Chat model** (set by the product owner, 2026-10-23, after Task 0):
+`anthropic/claude-haiku-5.5` through OpenRouter, in `CHAT_MODEL`. Embeddings stay as D0
+decided. On 2026-10-23 I checked that OpenRouter lists both `anthropic/claude-haiku-5.5` and
+`openai/text-embedding-3-small`, and that the key in `.env` authenticates.
+`GENERATION_ENABLED` is now `true`.
+
 ## 2. Allowed libraries (pinned; nothing else without asking)
 
 Versions are the latest releases on PyPI and npm, checked 2026-10-23.
@@ -158,6 +164,7 @@ refuse. That would be a planned stop at F6.
 | D0–D9 values (D2 method only) | Product owner | 2026-10-23 |
 | D2 threshold number | Product owner | At F3, from measured scores |
 | D1 size cap | Product owner | At F1, from measured section lengths |
+| Chat model `anthropic/claude-haiku-5.5` via OpenRouter | Product owner | 2026-10-23 |
 | This plan and the library list | Release manager | **Approved 2026-10-23 07:05 UTC+08:00** |
 | `gate` made a required check on `main` | Product owner (repo admin) | After Task 0 merges |
 | Each feature done | Product owner | At each feature's sign-off in its ticket |
