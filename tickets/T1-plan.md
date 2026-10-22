@@ -1,24 +1,24 @@
 # T1 — Plan
 
-**Status:** awaiting approval
+**Status:** approved (release manager, 2026-10-23 07:05 UTC+08:00)
 **Date:** 2026-10-23
 **Inputs:** `docs/PRD.md` v1.0, `docs/features.md` v1.0, `tickets/T1.md` (criteria),
 `tickets/T1-assumptions.md`, `docs/design/ADR-001-answer-gate.md`. No code before approval.
 
 ## 1. Decisions
 
-| | Value | Reason |
+| | Value | Reason (one sentence) |
 |---|---|---|
-| D0 | OpenAI `text-embedding-3-small`, 1,536 dimensions, via OpenRouter | Cheap, strong on English, keeps the stack. The Error criterion holds for a chat-model failure, not a full OpenRouter outage. Whether OpenRouter serves this model is checked before F1 |
-| D1 | One passage per numbered section. Tables kept whole, no overlap. A long section splits at paragraph boundaries, and the section heading is prefixed to each passage before embedding. **Size cap set at F1** from the measured section lengths | Citations map exactly to sections, and the heading helps short sections score well |
-| D2 | **Method:** run all 13 questions, record every top score, and set the threshold at the midpoint of the gap between the lowest score among Q1–Q10 and the highest among Q11–Q13. A score clears only if strictly above the threshold. Rephrased variants are tested in a separate file, never in `EVALUATION.md`. **Number:** filled in at F3 from the measured scores. If there is no gap, the ADR-001 trigger applies | Balanced, defensible, and "strictly above" matches the brief's "nothing above threshold" |
-| D3 | 5 passages | Room for both sections that Q10 and Q8 each need. Has no effect on refusals |
-| D4 | Only current versions go to the model. A retrieved superseded passage appears only as a labelled "earlier version" note | The model can't mix £50 and £75. REQ-U17 holds. "Is this still current?" stays answerable |
-| D5 | The refusal says the policy documents don't cover this, cites no policy, and gives a fixed who-to-ask list: expenses → Group Finance; leave, pay and benefits → HR; anything else → Compliance | Staff need somewhere to go, not just a no |
-| D6 | Show both policies with their sections, say plainly that they conflict, and tell the reader to escalate to Group Legal and Group Operational Risk. Conflicts are spotted only from `known_conflict` in `MANIFEST.yaml` (read-only), never by the model | Which one wins is the policy owner's call, not the app's |
-| D7 | Flat numbered list in marker order, each entry showing document, section and version | Simplest, matches the flat API, and the brief leaves grouping out of the slice |
-| D8 | The last 5 messages, counting questions and answers separately (`CONVERSATION_CONTEXT_MESSAGES`) | Staff often refer back more than one turn |
-| D9 | Search again every turn, on the new question joined with the one before it (`FOLLOWUP_QUERY_QUESTIONS`). The refusal rule judges the joined text. **Measured at F6.** If the partner-flight check fails there, that is a planned stop | "And for Singapore?" on its own finds nothing. The cap limits topic carry-over |
+| D0 | OpenAI `text-embedding-3-small`, 1,536 dimensions, via OpenRouter. Before F1 I check that OpenRouter serves it | It finds the right policy text well at low cost, and stays with the provider we already agreed, so nothing new needs approving. |
+| D1 | One passage per numbered section. Tables kept whole, no overlap. A long section splits at paragraph boundaries, and the section heading is prefixed to each passage before embedding. **Size cap set at F1** from the measured section lengths | Cutting along the policy's own sections means every answer can point to the exact section it came from, which is what staff need to trust it. |
+| D2 | **Method:** run all 13 questions, record every top score, and set the threshold at the midpoint of the gap between the lowest score among Q1–Q10 and the highest among Q11–Q13. A score clears only if strictly above the threshold. Rephrased variants are tested in a separate file, never in `EVALUATION.md`. **Number:** filled in at F3 from the measured scores. **If no threshold cleanly separates the 13:** we don't pick a number that fails any question. I stop and record the scores, then try improving the search within the agreed design (chunking, heading prefix, number of passages) and re-run. If there is still no clean gap, I bring you the options and you decide (ADR-001). The corpus and `EVALUATION.md` are never changed to make it pass | The cut-off is set from measured results on the bank's own test questions, not from guesswork, so we can show an auditor exactly why the assistant answers some questions and declines others. |
+| D3 | 5 passages | Five passages are enough to bring in both policies when a question spans two, without slowing answers down. |
+| D4 | Only current versions go to the model. A retrieved superseded passage appears only as a labelled "earlier version" note | Staff always get the current rule, and can still see what changed, which tackles the brief's core problem of answers quoting out-of-date policy. |
+| D5 | The refusal says the policy documents don't cover this, cites no policy, and gives a fixed who-to-ask list: expenses → Group Finance; leave, pay and benefits → HR; anything else → Compliance | Staff need somewhere to go, not just a no. |
+| D6 | Show both policies with their sections, say plainly that they conflict, and tell the reader to escalate to Group Legal and Group Operational Risk. Conflicts are spotted only from `known_conflict` in `MANIFEST.yaml` (read-only), never by the model | Which policy wins is the policy owner's call, not the app's. |
+| D7 | Flat numbered list in marker order, each entry showing document, section and version | Every source is shown plainly with its document, section and version, and a fancier layout can wait until users ask for it. |
+| D8 | The last 5 messages, counting questions and answers separately (`CONVERSATION_CONTEXT_MESSAGES`) | Staff often refer back more than one turn. |
+| D9 | Search again every turn, on the new question joined with the one before it (`FOLLOWUP_QUERY_QUESTIONS`). The refusal rule judges the joined text. **Measured at F6.** If the partner-flight check fails there, that is a planned stop | A short follow-up like "and for Singapore?" finds nothing on its own, and limiting it to the one question before keeps old topics from slipping into new answers. |
 
 ## 2. Allowed libraries (pinned; nothing else without asking)
 
@@ -34,10 +34,14 @@ Versions are the latest releases on PyPI and npm, checked 2026-10-23.
 | qdrant-client | 1.20.0 | Apache-2.0 | | next | 16.4.2 | MIT |
 | openai (pointed at OpenRouter) | 3.37.0 | Apache-2.0 | | react, react-dom | 19.3.1 | MIT |
 | pyyaml | 6.0.3 | MIT | | typescript | 5.9.3 | Apache-2.0 |
-| python-dotenv | 1.2.4 | BSD-3-Clause | | | | |
+| python-dotenv | 1.2.4 | BSD-3-Clause | | @types/react, @types/react-dom | 19.3.0 | MIT |
+| | | | | @types/node | 26.6.5 | MIT |
 
 - **TypeScript:** pinned to 5.9.3, not 7.0.2. I haven't checked whether Next 16 supports
   TypeScript 7.
+- **The `@types` packages** were added with your approval on 2026-10-23.
+- **Frontend lint** is `tsc --noEmit`. There is no eslint.
+- **Python:** 3.12 is run through the launcher, `py -3.12` (3.12.1 is installed).
 - **Not libraries:** the Docker images `postgres` (PostgreSQL Licence) and `qdrant/qdrant`
   (Apache-2.0).
 - **Transitive dependencies** are covered by the licence check, which fails on GPL, AGPL, LGPL,
@@ -58,7 +62,9 @@ Versions are the latest releases on PyPI and npm, checked 2026-10-23.
 - Docker Compose for Postgres and Qdrant.
 - `.env.example`, plus a git-ignored `.env` that all keys and settings are read from.
 - Test fakes for embeddings and chat, so no test touches the network.
-- `python -m app.evaluate`, which runs the 13 questions against a running API.
+- `python -m app.evaluate`, which runs the 13 questions. Status, answers and top score come
+  from the running API. The top three sections (REQ-R4) come from calling the search code
+  directly, so the agreed API doesn't change.
 - One GitHub Actions job, `gate`, on every pull request: tests, lint, security scan, licence
   check and protected-files check.
 
@@ -145,7 +151,7 @@ refuse. That would be a planned stop at F6.
 | D0–D9 values (D2 method only) | Product owner | 2026-10-23 |
 | D2 threshold number | Product owner | At F3, from measured scores |
 | D1 size cap | Product owner | At F1, from measured section lengths |
-| This plan and the library list | Product owner | Pending |
+| This plan and the library list | Release manager | **Approved 2026-10-23 07:05 UTC+08:00** |
 | `gate` made a required check on `main` | Product owner (repo admin) | After Task 0 merges |
 | Each feature done | Product owner | At each feature's sign-off in its ticket |
 | Deployment to Railway | Product owner | At the deployment stage |
