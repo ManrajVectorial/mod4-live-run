@@ -7,10 +7,12 @@ Each probe's check() returns normally when its dependency answers, and raises ot
 import asyncio
 import logging
 import math
+import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal, Protocol
+from urllib.parse import urlparse
 
-from openai import OpenAI
 from qdrant_client import QdrantClient
 from sqlalchemy import Engine, create_engine, text
 
@@ -52,14 +54,35 @@ class VectorStoreProbe:
         self.client.get_collections()
 
 
-class ModelProbe:
-    """Lists the provider's models: proves it is reachable without generating anything."""
+def _urlopen(request: urllib.request.Request, timeout: float) -> int:
+    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310  # nosec B310
+        return response.status
 
-    def __init__(self, client: OpenAI) -> None:
-        self.client = client
+
+class ModelProbe:
+    """Calls the provider's authenticated key endpoint: proves the provider is reachable AND
+    accepts our key, without generating anything. (Listing models would not: it is public.)
+    The response describes the key, so it is never read or logged."""
+
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        timeout: float,
+        fetch: Callable[[urllib.request.Request, float], int] = _urlopen,
+    ) -> None:
+        self.url = base_url.rstrip("/") + "/key"
+        self.api_key = api_key
+        self.timeout = timeout
+        self.fetch = fetch
 
     def check(self) -> None:
-        self.client.models.list()
+        if urlparse(self.url).scheme not in ("http", "https"):
+            raise ValueError("OPENROUTER_BASE_URL must be http(s)")
+        request = urllib.request.Request(  # noqa: S310 - scheme checked above
+            self.url, headers={"Authorization": f"Bearer {self.api_key}"}
+        )
+        self.fetch(request, self.timeout)
 
 
 @dataclass
@@ -90,25 +113,16 @@ def build_probes(settings: Settings) -> Probes:
             QdrantClient(url=settings.qdrant_url, api_key=api_key, timeout=math.ceil(timeout))
         )
 
-    missing = [
-        name
-        for name, value in (
-            ("OPENROUTER_API_KEY", settings.openrouter_api_key),
-            ("OPENROUTER_BASE_URL", settings.openrouter_base_url),
-        )
-        if value is None
-    ]
-    if missing:
+    key, base_url = settings.openrouter_api_key, settings.openrouter_base_url
+    if key is None or base_url is None:
+        missing = [
+            n
+            for n, v in (("OPENROUTER_API_KEY", key), ("OPENROUTER_BASE_URL", base_url))
+            if v is None
+        ]
         generation: Probe = NotConfigured(*missing)
     else:
-        generation = ModelProbe(
-            OpenAI(
-                api_key=settings.openrouter_api_key.get_secret_value(),
-                base_url=settings.openrouter_base_url,
-                timeout=timeout,
-                max_retries=0,
-            )
-        )
+        generation = ModelProbe(base_url, key.get_secret_value(), timeout=timeout)
 
     return Probes(postgres=postgres, qdrant=qdrant, generation=generation)
 
