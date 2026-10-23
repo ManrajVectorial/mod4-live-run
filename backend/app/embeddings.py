@@ -4,6 +4,8 @@ from typing import Protocol
 
 from openai import OpenAI
 
+from app.openrouter import HEADERS
+
 
 class Embedder(Protocol):
     def embed(self, texts: list[str]) -> list[list[float]]: ...
@@ -11,7 +13,13 @@ class Embedder(Protocol):
 
 class OpenRouterEmbedder:
     def __init__(self, api_key: str, base_url: str, model: str, timeout: float) -> None:
-        self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout, max_retries=0)
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=timeout,
+            max_retries=0,
+            default_headers=HEADERS,
+        )
         self.model = model
 
     def embed(self, texts: list[str]) -> list[list[float]]:

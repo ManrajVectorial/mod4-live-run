@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 from qdrant_client import QdrantClient
 from sqlalchemy import Engine, create_engine, text
 
+from app.openrouter import HEADERS
 from app.settings import Settings
 
 log = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ class ModelProbe:
         if urlparse(self.url).scheme not in ("http", "https"):
             raise ValueError("OPENROUTER_BASE_URL must be http(s)")
         request = urllib.request.Request(  # noqa: S310 - scheme checked above
-            self.url, headers={"Authorization": f"Bearer {self.api_key}"}
+            self.url, headers={"Authorization": f"Bearer {self.api_key}", **HEADERS}
         )
         self.fetch(request, self.timeout)
 

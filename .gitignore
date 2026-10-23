@@ -38,3 +38,6 @@ Thumbs.db
 
 # Archives (for example a stray copy of the corpus): never committed
 *.zip
+
+# Local server logs
+*.log

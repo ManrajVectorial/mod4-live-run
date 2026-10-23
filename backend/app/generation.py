@@ -10,6 +10,7 @@ from typing import Protocol
 import openai
 from openai import OpenAI
 
+from app.openrouter import HEADERS
 from app.retrieval import Hit
 
 
@@ -73,7 +74,13 @@ class OpenRouterGenerator:
         prompt_version: str,
         system_prompt: str,
     ) -> None:
-        self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout, max_retries=0)
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=timeout,
+            max_retries=0,
+            default_headers=HEADERS,
+        )
         self.model, self.temperature, self.max_tokens = model, temperature, max_tokens
         self.reasoning_enabled = reasoning_enabled
         self.prompt_version, self.system_prompt = prompt_version, system_prompt
