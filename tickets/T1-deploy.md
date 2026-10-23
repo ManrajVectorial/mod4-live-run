@@ -141,19 +141,36 @@ Connecting the repo made Railway build `main` straight away. It failed because `
 still the start commit, so nothing is deployed. The first real deployment is the merge of
 the release PR.
 
-## Open: build and health-check config (railway.json)
+## Build and health-check config (railway.json): decided, option A
 
-- **What Railway said:** it refused to set `/backend/railway.json` and
+- **What Railway said:** it refused to use `/backend/railway.json` and
   `/frontend/railway.json` as the services' config files: "Config as Code
   (railway.json/railway.toml) is deprecated. Use Infrastructure as Code (.railway/railway.ts)
   instead."
-- **Where that leaves the files:** `backend/railway.json` (Dockerfile, `/healthz`) and the
-  new `frontend/railway.json` (Railpack, `npm ci && npm run build`, `npm start`, `/healthz`)
-  are committed. I haven't checked whether Railway reads them by itself from a service's root
-  directory.
-- **Why I couldn't check:** web fetch of Railway's docs wasn't permitted, and nothing can be
-  tested until `main` has the app.
-- **Decision:** waiting for the product owner; the options are in the hand-off.
+- **Decision (product owner, 2026-10-23):** option A. The build, start command and health
+  check are set directly on each service through Railway's API. `backend/railway.json` and
+  `frontend/railway.json` stay in the repo as the written record of those settings. **If you
+  change one, change the other.** Railway doesn't read the files, so they can drift.
+- **What is set now** (read back from Railway after setting):
+
+| Setting | `sample-api` | `sample-web` | Same as |
+|---|---|---|---|
+| Root directory | `/backend` | `/frontend` | — |
+| Build | Dockerfile (`dockerfilePath: Dockerfile`) | Railpack, `npm ci && npm run build` | `railway.json` `build` |
+| Start command | none on the service: the Dockerfile's `CMD` (`uvicorn --factory app.main:serve … --port ${PORT}`) | `npm start` | `railway.json` `deploy.startCommand` (web) / Dockerfile (api) |
+| Health check | `/healthz` (default timeout) | `/healthz` (default timeout) | `railway.json` `deploy.healthcheckPath` |
+| Restart policy | On failure | On failure | `railway.json` `deploy.restartPolicyType` |
+
+- **Why the api has no start command of its own:** one set on the service would *replace*
+  the Dockerfile's `CMD`, and I can't confirm before a real deploy that Railway expands
+  `${PORT}` the same way.
+- **The builder name:** the API's builder field still reads `RAILPACK` for `sample-api`,
+  because Railway's builder list (`HEROKU`, `NIXPACKS`, `PAKETO`, `RAILPACK`) has no
+  Dockerfile option. A Dockerfile path is set, and Railway normally builds with a Dockerfile
+  when it finds one. **I haven't checked that it does until the first real build,** whose
+  log shows which builder ran.
+- **No deployments started:** setting these began no deployment. The latest ones are still
+  the two failed builds of the empty `main`.
 
 ## Not checked
 
@@ -162,3 +179,4 @@ the release PR.
   first real deployment.
 - Postgres 18 on Railway against the app (local tests use Postgres 16).
 - How Railway's "wait for CI" behaves when a commit has no check suites.
+- Which builder Railway uses for `sample-api` (see above).
