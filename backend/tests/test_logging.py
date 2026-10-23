@@ -52,6 +52,13 @@ def test_secrets_never_logged(make_settings, caplog):
 
 def test_provider_client_loggers_held_at_warning():
     """openai and httpx log request bodies (the question) at DEBUG; keep them quiet."""
-    configure_logging("DEBUG")
-    for name in ("openai", "httpx", "httpcore"):
-        assert logging.getLogger(name).getEffectiveLevel() >= logging.WARNING
+    root = logging.getLogger()
+    previous = root.level
+    root.setLevel(logging.DEBUG)  # as if LOG_LEVEL=DEBUG took effect
+    try:
+        configure_logging("DEBUG")
+        # openai 3.x sends through httpx2/httpcore2, not httpx; both families are held.
+        for name in ("openai", "httpx", "httpcore", "httpx2", "httpcore2"):
+            assert logging.getLogger(name).getEffectiveLevel() >= logging.WARNING, name
+    finally:
+        root.setLevel(previous)

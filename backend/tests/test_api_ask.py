@@ -89,6 +89,24 @@ def test_blank_question_is_422_before_retrieval(make_settings):
     assert services.retriever.texts == []
 
 
+def test_malformed_body_is_422_question_blank(make_settings):
+    client, services = make_client(make_settings, ANSWERABLE)
+    bad_bodies = (
+        b'{"question": "Does a claim of exactly \xa375 need approval?"}',  # not UTF-8
+        b'{"question": ',  # not JSON
+        b'["question"]',  # JSON, but not an object
+    )
+    for raw in bad_bodies:
+        response = client.post(
+            "/api/ask", content=raw, headers={"Content-Type": "application/json"}
+        )
+        assert response.status_code == 422, raw
+        assert response.json() == {
+            "error": {"code": "question_blank", "message": "Enter a question."}
+        }
+    assert services.retriever.texts == []
+
+
 def test_too_long_question_is_422(make_settings):
     client, services = make_client(make_settings, ANSWERABLE, max_question_chars=20)
     response = ask(client, "x" * 21)

@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     chat_model: str | None = None
     chat_temperature: float | None = None
     chat_max_tokens: int | None = None
+    chat_reasoning_enabled: bool | None = None
     generation_enabled: bool
     generation_timeout_seconds: float | None = None
 

@@ -7,11 +7,14 @@ anything that could call a chat model. Every response, of any status, is recorde
 import logging
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Protocol
 
+from app.citations import cited_markers, valid_citations
+from app.conflicts import Conflict, conflict_note, find_conflict
 from app.db import AssistantRecord, ConversationNotFound, Store
+from app.generation import GenerationFailed, GenerationTimeout, Generator
 from app.refusal import clears, refusal_message
 from app.retrieval import Hit, Retrieval
 from app.schemas import AskResponse, Degraded, Meta, Refusal, Source
@@ -33,6 +36,8 @@ class ApiError(Exception):
 class AskConfig:
     threshold: float
     max_question_chars: int
+    generation_enabled: bool = False
+    conflicts: list[Conflict] = field(default_factory=list)
 
 
 def _source(marker: int, hit: Hit) -> Source:
@@ -87,6 +92,7 @@ def handle_ask(
     retriever: RetrieverLike,
     store: Store,
     config: AskConfig,
+    generator: Generator | None = None,
 ) -> AskResponse:
     started = time.perf_counter()
     request_id = uuid.uuid4().hex[:12]
@@ -99,22 +105,64 @@ def handle_ask(
     indexed_at = datetime.fromisoformat(max(stamps)) if stamps else None
 
     answer = refusal = degraded = None
+    prompt_version = model = None
+    tokens: tuple[int | None, int | None] = (None, None)
     if not clears(top, config.threshold):
+        # The gate: refused before any chat-model call (REQ-R6).
         status, sources = "refused", []
         refusal = Refusal(reason="below_threshold", message=refusal_message())
     else:
         cleared = [h for h in retrieval.current if h.score > config.threshold]
         notes = earlier_versions(cleared, retrieval.superseded, config.threshold)
-        status = "degraded"
-        degraded = Degraded(reason="generation_disabled")
-        sources = [_source(i, h) for i, h in enumerate([*cleared, *notes], start=1)]
+        markers = {h.passage_id: i for i, h in enumerate(cleared, start=1)}
+        conflict = find_conflict(cleared, config.conflicts)
+        note = conflict_note(conflict, markers) if conflict else None
+
+        def all_sources() -> list[Source]:
+            return [_source(i, h) for i, h in enumerate([*cleared, *notes], start=1)]
+
+        if generator is None or not config.generation_enabled:
+            status, sources = "degraded", all_sources()
+            degraded = Degraded(reason="generation_disabled")
+        else:
+            try:
+                result = generator.generate(question, cleared, note)
+            except GenerationTimeout as exc:
+                log.warning(
+                    "ask request_id=%s generation timed out (%s)", request_id, type(exc).__name__
+                )
+                status, sources = "degraded", all_sources()
+                degraded = Degraded(reason="provider_timeout")
+            except GenerationFailed as exc:
+                log.warning(
+                    "ask request_id=%s generation failed (%s)", request_id, type(exc).__name__
+                )
+                status, sources = "degraded", all_sources()
+                degraded = Degraded(reason="provider_error")
+            else:
+                prompt_version, model = result.prompt_version, result.model
+                tokens = (result.prompt_tokens, result.completion_tokens)
+                if not valid_citations(result.text, len(cleared)):
+                    status, sources = "degraded", all_sources()
+                    degraded = Degraded(reason="invalid_citations")
+                else:
+                    status = "answered"
+                    answer = f"{result.text}\n\n{note}" if note else result.text
+                    used = set(cited_markers(result.text))
+                    if conflict:
+                        used |= {markers[h.passage_id] for h in conflict}  # D6: both sides
+                    chosen = [h for h in cleared if markers[h.passage_id] in used]
+                    sources = [_source(markers[h.passage_id], h) for h in chosen]
+                    policies = {h.payload["policy_id"] for h in chosen}
+                    old = [h for h in notes if h.payload["policy_id"] in policies]
+                    sources += [_source(len(cleared) + i, h) for i, h in enumerate(old, start=1)]
 
     message_id = uuid.uuid4()
     created_at = datetime.now(UTC)
     latency_ms = int((time.perf_counter() - started) * 1000)
     meta = Meta(
-        prompt_version=None,
-        model=None,
+        prompt_version=prompt_version,
+        model=model,
         top_score=top,
         threshold=config.threshold,
         retrieved=len(retrieval.hits),
@@ -161,12 +209,15 @@ def handle_ask(
         raise ApiError(404, "conversation_not_found", "That conversation doesn't exist.") from exc
 
     log.info(
-        "ask request_id=%s status=%s top_score=%s retrieved=%d latency_ms=%d",
+        "ask request_id=%s status=%s top_score=%s retrieved=%d latency_ms=%d "
+        "prompt_tokens=%s completion_tokens=%s",
         request_id,
         status,
         "none" if top is None else f"{top:.3f}",
         meta.retrieved,
         latency_ms,
+        tokens[0],
+        tokens[1],
     )
     return AskResponse(
         status=status,

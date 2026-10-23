@@ -1,0 +1,32 @@
+13 questions against http://127.0.0.1:8000
+Q    status    top score  first source                       question
+Q1   answered  0.723      travel-expense-policy-v3.1 §4.2    What is the approval threshold for a travel expense claim?
+Q2   answered  0.733      travel-expense-policy-v3.1 §4.2    Does a claim of exactly £75 need approval?
+Q3   answered  0.582      travel-expense-policy-v3.1 §5.2    Can I fly business class on a six-hour flight?
+Q4   answered  0.666      travel-expense-policy-v3.1 §6.2    What is the accommodation cap for a night in Singapore?
+Q5   answered  0.557      client-onboarding-kyc-v2.4 §6.1    How often do we refresh KYC for a high-risk client?
+Q6   answered  0.611      client-onboarding-kyc-v2.4 §6.4    What happens if a KYC refresh is more than 90 days overdue?
+Q7   answered  0.606      client-onboarding-kyc-v2.4 §4.2    At what ownership percentage do we identify beneficial owners under enhanced due diligence?
+Q8   answered  0.712      records-retention-v4.0 §4.2        How long do we keep client correspondence?
+Q9   answered  0.618      outsourcing-third-party-v1.8 §4.1  Who can approve a critical outsourcing arrangement?
+Q10  answered  0.570      records-retention-v4.0 §4.2        A provider holds our client correspondence. How long can they keep it after we terminate?
+Q11  refused   0.438      —                                  Can I expense my partner's flight if they travel with me?
+Q12  refused   0.462      —                                  What is our policy on cryptocurrency held by clients?
+Q13  refused   0.275      —                                  How many days of paid parental leave am I entitled to?
+
+| Q | top score | expected in top 3 | top 3 retrieved | API status | cited | outcome |
+|---|---|---|---|---|---|---|
+| Q1 | 0.723 | yes | travel-expense-policy-v3.1 §4.2 (0.723), travel-expense-policy-v3.1 §4.1 (0.643), travel-expense-policy-v3.1 §2.4 (0.554) | answered | travel-expense-policy-v3.1 §4.2, travel-expense-policy-v3.0 §4.1 | PASS |
+| Q2 | 0.733 | yes | travel-expense-policy-v3.1 §4.2 (0.733), travel-expense-policy-v3.1 §4.1 (0.570), travel-expense-policy-v3.1 §4.5 (0.529) | answered | travel-expense-policy-v3.1 §4.2, travel-expense-policy-v3.1 §4.1, travel-expense-policy-v3.0 §4.1, travel-expense-policy-v3.0 §4.3 | PASS |
+| Q3 | 0.582 | yes | travel-expense-policy-v3.1 §5.2 (0.582), travel-expense-policy-v3.1 §5.3 (0.494), travel-expense-policy-v3.1 §6.3 (0.361) | answered | travel-expense-policy-v3.1 §5.2, travel-expense-policy-v3.0 §5.2 | PASS |
+| Q4 | 0.664 | yes | travel-expense-policy-v3.1 §6.2 (0.664), travel-expense-policy-v3.1 §6.1 (0.403), travel-expense-policy-v3.1 §6.3 (0.342) | answered | travel-expense-policy-v3.1 §6.2, travel-expense-policy-v3.0 §6.1 | PASS |
+| Q5 | 0.557 | yes | client-onboarding-kyc-v2.4 §6.3 (0.557), client-onboarding-kyc-v2.4 §6.1 (0.527), client-onboarding-kyc-v2.4 §6.2 (0.494) | answered | client-onboarding-kyc-v2.4 §6.1 | PASS |
+| Q6 | 0.611 | yes | client-onboarding-kyc-v2.4 §6.4 (0.611), client-onboarding-kyc-v2.4 §6.3 (0.491), client-onboarding-kyc-v2.4 §6.2 (0.472) | answered | client-onboarding-kyc-v2.4 §6.4 | PASS |
+| Q7 | 0.606 | yes | client-onboarding-kyc-v2.4 §4.2 (0.606), client-onboarding-kyc-v2.4 §4.3 (0.542), client-onboarding-kyc-v2.4 §5.2 (0.517) | answered | client-onboarding-kyc-v2.4 §4.2, client-onboarding-kyc-v2.4 §4.1 | PASS |
+| Q8 | 0.712 | yes | records-retention-v4.0 §4.2 (0.712), records-retention-v4.0 §4.1 (0.600), client-onboarding-kyc-v2.4 §7.2 (0.511) | answered | records-retention-v4.0 §4.2, records-retention-v4.0 §4.1, outsourcing-third-party-v1.8 §6.4 | PASS |
+| Q9 | 0.618 | yes | outsourcing-third-party-v1.8 §4.1 (0.618), outsourcing-third-party-v1.8 §4.2 (0.588), outsourcing-third-party-v1.8 §4.3 (0.582) | answered | outsourcing-third-party-v1.8 §4.1 | PASS |
+| Q10 | 0.570 | yes | records-retention-v4.0 §4.2 (0.570), outsourcing-third-party-v1.8 §6.4 (0.565), records-retention-v4.0 §4.1 (0.534) | answered | records-retention-v4.0 §4.2, outsourcing-third-party-v1.8 §6.4, records-retention-v4.0 §4.1 | PASS |
+| Q11 | 0.438 | must refuse | travel-expense-policy-v3.1 §5.2 (0.438), travel-expense-policy-v3.1 §5.1 (0.423), travel-expense-policy-v3.1 §6.3 (0.410) | refused | — | PASS |
+| Q12 | 0.462 | must refuse | client-onboarding-kyc-v2.4 §9 (0.462), client-onboarding-kyc-v2.4 §1.2 (0.437), records-retention-v4.0 §9 (0.436) | refused | — | PASS |
+| Q13 | 0.275 | must refuse | travel-expense-policy-v3.1 §6.3 (0.275), travel-expense-policy-v3.1 §7.4 (0.272), records-retention-v4.0 §4.1 (0.253) | refused | — | PASS |
+eval 10/10 answered, 3/3 refused

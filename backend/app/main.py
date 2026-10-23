@@ -4,6 +4,7 @@ The factory pattern keeps settings from loading at import time, so tests build t
 with their own settings, probes and services and never read the real .env.
 """
 
+import json
 import logging
 import threading
 from dataclasses import dataclass
@@ -14,13 +15,17 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from qdrant_client import QdrantClient
 from sqlalchemy import create_engine
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.ask import ApiError, AskConfig, RetrieverLike, handle_ask
+from app.conflicts import known_conflicts
 from app.db import Store
 from app.embeddings import OpenRouterEmbedder
+from app.generation import OpenRouterGenerator
 from app.health import Probes, build_probes, check_components
 from app.logging import configure_logging
+from app.prompts import load_answer_prompt
 from app.retrieval import Retriever
 from app.schemas import AskResponse
 from app.settings import Settings, load_settings, require
@@ -32,7 +37,7 @@ log = logging.getLogger("app.main")
 class Services:
     retriever: RetrieverLike
     store: Store
-    generator: Any = None  # the chat model, wired in at F4
+    generator: Any = None  # the chat model (F4); None means generation is off
 
 
 def build_services(settings: Settings) -> Services:
@@ -60,7 +65,29 @@ def build_services(settings: Settings) -> Services:
         top_k=cfg["retrieval_top_k"],
     )
     engine = create_engine(cfg["database_url"].get_secret_value(), pool_pre_ping=True)
-    return Services(retriever=retriever, store=Store(engine))
+    generator = None
+    if settings.generation_enabled:
+        chat = require(
+            settings,
+            "chat_model",
+            "chat_temperature",
+            "chat_max_tokens",
+            "chat_reasoning_enabled",
+            "generation_timeout_seconds",
+        )
+        prompt = load_answer_prompt()
+        generator = OpenRouterGenerator(
+            api_key=cfg["openrouter_api_key"].get_secret_value(),
+            base_url=cfg["openrouter_base_url"],
+            model=chat["chat_model"],
+            temperature=chat["chat_temperature"],
+            max_tokens=chat["chat_max_tokens"],
+            timeout=chat["generation_timeout_seconds"],
+            reasoning_enabled=chat["chat_reasoning_enabled"],
+            prompt_version=prompt.version,
+            system_prompt=prompt.text,
+        )
+    return Services(retriever=retriever, store=Store(engine), generator=generator)
 
 
 def error(status: int, code: str, message: str) -> JSONResponse:
@@ -77,7 +104,10 @@ def create_app(
     # REQ-R7: no threshold, no API. Checked at startup, not on the first question.
     required = require(cfg, "refusal_threshold", "max_question_chars")
     ask_config = AskConfig(
-        threshold=required["refusal_threshold"], max_question_chars=required["max_question_chars"]
+        threshold=required["refusal_threshold"],
+        max_question_chars=required["max_question_chars"],
+        generation_enabled=cfg.generation_enabled,
+        conflicts=known_conflicts(cfg.corpus_dir) if cfg.corpus_dir else [],
     )
 
     app = FastAPI(title="Policy Assistant API")
@@ -129,15 +159,25 @@ def create_app(
         }
 
     @app.post("/api/ask", response_model=AskResponse)
-    def ask(body: dict[str, Any]) -> AskResponse:
+    async def ask(request: Request) -> AskResponse:
+        # Parsed here, not by FastAPI, so a body that isn't UTF-8 JSON gets the agreed
+        # 422 question_blank instead of a framework 400.
+        try:
+            body = json.loads((await request.body()).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            body = None
+        if not isinstance(body, dict):
+            raise ApiError(422, "question_blank", "Enter a question.")
         current = get_services()
         conversation = body.get("conversation_id")
-        return handle_ask(
+        return await run_in_threadpool(  # the ask path blocks on the network and database
+            handle_ask,
             body.get("question"),
             None if conversation is None else str(conversation),
             current.retriever,
             current.store,
             ask_config,
+            current.generator,
         )
 
     return app

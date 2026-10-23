@@ -1,0 +1,7 @@
+INFO:     Started server process [5260]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:56051 - "GET /healthz HTTP/1.1" 200 OK
+INFO:app.ask:ask request_id=798e83cb7de1 status=degraded top_score=0.733 retrieved=5 latency_ms=1123 prompt_tokens=None completion_tokens=None
+INFO:     127.0.0.1:56057 - "POST /api/ask HTTP/1.1" 200 OK
