@@ -129,6 +129,18 @@ class Store:
         with Session(self.engine) as session:
             yield session
 
+    def recent_messages(self, conversation_id: uuid.UUID, limit: int) -> list[Message]:
+        """The last `limit` messages (questions and answers counted separately), oldest first."""
+        with self.session() as s:
+            rows = s.scalars(
+                select(Message)
+                .where(Message.conversation_id == conversation_id)
+                .order_by(Message.seq.desc())
+                .limit(limit)
+            ).all()
+            s.expunge_all()
+        return list(reversed(rows))
+
     def conversation_exists(self, conversation_id: uuid.UUID) -> bool:
         with self.session() as s:
             return s.get(Conversation, conversation_id) is not None

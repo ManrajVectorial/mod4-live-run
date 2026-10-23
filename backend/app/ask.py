@@ -13,10 +13,12 @@ from typing import Protocol
 
 from app.citations import cited_markers, valid_citations
 from app.conflicts import Conflict, conflict_note, find_conflict
+from app.conversation import context_for
 from app.db import AssistantRecord, ConversationNotFound, Store
 from app.generation import GenerationFailed, GenerationTimeout, Generator
 from app.refusal import clears, refusal_message
 from app.retrieval import Hit, Retrieval
+from app.rewrite import RewriteFailed, Rewriter
 from app.schemas import AskResponse, Degraded, Meta, Refusal, Source
 
 log = logging.getLogger("app.ask")
@@ -38,6 +40,7 @@ class AskConfig:
     max_question_chars: int
     generation_enabled: bool = False
     conflicts: list[Conflict] = field(default_factory=list)
+    context_messages: int = 0  # D8: earlier messages the models see on a follow-up
 
 
 def _source(marker: int, hit: Hit) -> Source:
@@ -93,13 +96,29 @@ def handle_ask(
     store: Store,
     config: AskConfig,
     generator: Generator | None = None,
+    rewriter: Rewriter | None = None,
 ) -> AskResponse:
     started = time.perf_counter()
     request_id = uuid.uuid4().hex[:12]
     question = validate_question(question_raw, config.max_question_chars)
     conversation_id = _parse_conversation(conversation_raw, store)
 
-    retrieval = retriever.retrieve(question)
+    # D9 amendment 2: a follow-up is rewritten by the model into a standalone question, and
+    # that is what is searched and judged by the refusal rule below. The first question of a
+    # conversation is never rewritten, and with generation switched off nothing is.
+    context = context_for(store, conversation_id, config.context_messages)
+    search_text = question
+    if context and rewriter is not None and config.generation_enabled:
+        try:
+            search_text = rewriter.rewrite(question, context)
+        except RewriteFailed as exc:
+            log.warning(
+                "ask request_id=%s rewrite failed (%s: %s); searching as asked",
+                request_id,
+                type(exc).__name__,
+                exc,  # our own message: never question text
+            )
+    retrieval = retriever.retrieve(search_text)
     top = retrieval.top_current_score
     stamps = [h.payload["indexed_at"] for h in retrieval.hits if h.payload.get("indexed_at")]
     indexed_at = datetime.fromisoformat(max(stamps)) if stamps else None
@@ -126,7 +145,7 @@ def handle_ask(
             degraded = Degraded(reason="generation_disabled")
         else:
             try:
-                result = generator.generate(question, cleared, note)
+                result = generator.generate(search_text, cleared, note, context or None)
             except GenerationTimeout as exc:
                 log.warning(
                     "ask request_id=%s generation timed out (%s)", request_id, type(exc).__name__

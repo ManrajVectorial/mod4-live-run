@@ -31,6 +31,45 @@ def test_floor_is_the_midpoint_of_the_gap_in_scores_alone():
     assert round(floor, 4) == 0.46  # midpoint of 0.44 (highest refuse) and 0.48 (lowest answer)
 
 
+def test_cases_run_through_the_api_as_two_turn_conversations():
+    from app.followup_eval import run_cases
+
+    sent = []
+
+    def fake_ask(base_url, question, timeout, conversation_id=None):
+        sent.append((question, conversation_id))
+        if conversation_id is None:
+            return {"status": "answered", "conversation_id": "conv", "meta": {"top_score": 0.7}}
+        refuse = "partner" in question
+        return {
+            "status": "refused" if refuse else "answered",
+            "conversation_id": conversation_id,
+            "meta": {"top_score": 0.3 if refuse else 0.6},
+        }
+
+    cases = [
+        FollowupCase(cid="C1", expect="answer", first="Threshold?", followup="And £75?"),
+        FollowupCase(
+            cid="C4", expect="refuse", first="Threshold?", followup="My partner's flight?"
+        ),
+        FollowupCase(cid="C9", expect="refuse", first="Threshold?", followup="And Singapore?"),
+    ]
+    rows = run_cases(cases, "http://api.test", 1.0, ask=fake_ask)
+    assert sent == [
+        ("Threshold?", None),
+        ("And £75?", "conv"),
+        ("Threshold?", None),
+        ("My partner's flight?", "conv"),
+        ("Threshold?", None),
+        ("And Singapore?", "conv"),
+    ]
+    assert [(r.cid, r.status, r.outcome) for r in rows] == [
+        ("C1", "answered", "PASS"),
+        ("C4", "refused", "PASS"),
+        ("C9", "answered", "FAIL"),
+    ]
+
+
 def test_no_floor_when_the_scores_overlap():
     scores = {"C1": 0.40, "C4": 0.45}
     assert choose_floor([case("C1", "answer"), case("C4", "refuse")], scores) is None

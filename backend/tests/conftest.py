@@ -95,6 +95,7 @@ def make_settings():
             # The API refuses to start without these (REQ-R7, REQ-A3).
             "refusal_threshold": 0.5,
             "max_question_chars": 500,
+            "conversation_context_messages": 5,  # D8
             **overrides,
         }
         return load_settings(_env_file=None, **values)

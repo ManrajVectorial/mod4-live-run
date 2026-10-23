@@ -158,11 +158,16 @@ def load_questions(evaluation_file: Path) -> list[Question]:
     return questions
 
 
-def ask_api(base_url: str, question: str, timeout: float) -> dict:
+def ask_api(
+    base_url: str, question: str, timeout: float, conversation_id: str | None = None
+) -> dict:
     url = base_url.rstrip("/") + "/api/ask"
     if urlparse(url).scheme not in ("http", "https"):
         raise ValueError("the API URL must start with http:// or https://")
-    body = json.dumps({"question": question}).encode("utf-8")
+    payload = {"question": question}
+    if conversation_id:
+        payload["conversation_id"] = conversation_id
+    body = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(  # noqa: S310 - scheme checked above
         url, data=body, headers={"Content-Type": "application/json"}, method="POST"
     )

@@ -4,23 +4,26 @@ import { useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { Result } from "@/components/Result";
 import { AskError, ask } from "@/lib/api";
-import type { AskResponse } from "@/lib/present";
+import { EMPTY_CONVERSATION, addTurn, type Conversation } from "@/lib/present";
 
-// The ask page (REQ-U1 to U13). One question, one result; Reset in the top bar clears it.
+// The ask page (REQ-U1 to U13), with follow-ups in one conversation (F6, C3).
+// Reset in the top bar reloads the page, which starts a new conversation (C6).
 export default function AskPage() {
   const [question, setQuestion] = useState("");
   const [pending, setPending] = useState(false);
-  const [result, setResult] = useState<AskResponse | null>(null);
+  const [conversation, setConversation] = useState<Conversation>(EMPTY_CONVERSATION);
   const [error, setError] = useState<string | null>(null);
 
   async function submit(event?: FormEvent) {
     event?.preventDefault();
-    if (pending || !question.trim()) return;
+    const asked = question.trim();
+    if (pending || !asked) return;
     setPending(true);
     setError(null);
-    setResult(null);
     try {
-      setResult(await ask(question));
+      const response = await ask(asked, conversation.conversationId);
+      setConversation((current) => addTurn(current, asked, response));
+      setQuestion("");
     } catch (caught) {
       // Never a blank result: every failure is shown (U12).
       setError(caught instanceof AskError ? caught.message : "Something went wrong. Try again shortly.");
@@ -36,17 +39,33 @@ export default function AskPage() {
     }
   }
 
+  const followUp = conversation.turns.length > 0;
   return (
     <main className="ask">
+      <ol className="turns" aria-label="This conversation">
+        {conversation.turns.map((turn) => (
+          <li key={turn.response.message_id} className="turn">
+            <p className="turn__question">
+              <span className="turn__label">You asked:</span> {turn.question}
+            </p>
+            <Result response={turn.response} />
+          </li>
+        ))}
+      </ol>
+
       <form onSubmit={submit}>
         <label className="ask__label" htmlFor="question">
-          Ask a policy question
+          {followUp ? "Ask a follow-up question" : "Ask a policy question"}
         </label>
         <textarea
           id="question"
           name="question"
           className="ask__input"
-          placeholder="For example: what is the approval threshold for a travel expense claim?"
+          placeholder={
+            followUp
+              ? "For example: and does a claim of exactly that amount need it?"
+              : "For example: what is the approval threshold for a travel expense claim?"
+          }
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
           onKeyDown={onKeyDown}
@@ -69,7 +88,6 @@ export default function AskPage() {
           {error}
         </p>
       )}
-      {result && <Result response={result} />}
     </main>
   );
 }

@@ -1,6 +1,6 @@
 # T1-F6 — Follow-up questions *(optional)*
 
-**Status:** in development (2026-10-23). **The cut is reversed: every feature ships.** D9 is amended (amendment 2, below).
+**Status:** done (2026-10-23). Built with D9 amendment 2 (the model rewrites follow-ups); every check below passes.
 **Optional:** no. Every feature ships (product owner, 2026-10-23)
 **Parent:** [T1](T1.md)
 **Depends on:** F5
@@ -131,3 +131,78 @@ call, the rewrite. The locked PRD (REQ-R6) and ADR-001 put the refusal rule befo
 call. The model still decides nothing, because the rule judges the rewritten question. First
 questions are unchanged. If you want the documents to match, REQ-R6 needs an amendment, which
 only you can approve (the PRD is protected).
+
+## Evidence (D9 amendment 2 build)
+
+**Done-when, real API on 8014, one conversation:**
+
+```
+1) Q1 "What is the approval threshold for a travel expense claim?"
+   status: answered | top_score: 0.7230 | cited: v3.1 §4.2                       PASS
+2) "And does a claim of exactly that amount need it?"
+   status: answered | top_score: 0.7182 (rewritten question) | cited: v3.1 §4.2
+   Yes, a claim of exactly £75 requires line-manager approval before reimbursement [1]. ...   PASS
+3) "Can I expense my partner's flight?"
+   status: refused | top_score: 0.4229 | cited: none
+   The policy documents don't cover this, so there is no policy answer to give. Who to ask: ...   PASS
+```
+
+**Follow-up set** (`python -m app.followup_eval`, every case run through the API as a
+two-turn conversation):
+
+| case | expect | follow-up | status | top score (rewritten) | outcome |
+|---|---|---|---|---|---|
+| C1 | answer | And does a claim of exactly that amount need it? | answered | 0.7225 | PASS |
+| C2 | answer | And for Singapore? | answered | 0.6657 | PASS |
+| C3 | answer | And for a standard-risk client? | answered | 0.5374 | PASS |
+| C4 | refuse | Can I expense my partner's flight? | refused | 0.4690 | PASS |
+| C5 | refuse | How many days of paid parental leave am I entitled to? | refused | 0.2750 | PASS |
+| C6 | refuse | What is our policy on cryptocurrency held by clients? | refused | 0.4825 | PASS |
+
+`followups 6/6 passed`. Through the web proxy on 3014, "And for Singapore?" after the London
+question is answered in the same conversation (£300 per night).
+
+**The 13 questions after F6:** `eval 10/10 answered, 3/3 refused`. In the API log: 0 unhandled
+errors and 0 rewrite fallbacks.
+
+**What it took:**
+- **`rewrite-v1` failed the check.** The model added framing the person never asked for. The
+  partner's-flight question became "...under Aldermere Bank's travel expense policy?"
+  (0.6499), and the cryptocurrency one gained "Aldermere Bank's policy" (0.5267). Both cleared
+  the threshold. With a thin history, it once replied with a sentence instead of a question.
+- **`rewrite-v2` fixed it.** If the question already makes sense on its own, it is returned
+  unchanged. No words are added that the person didn't say or refer to; only references like
+  "that amount" are filled in.
+- **A code guard was added.** A rewrite that doesn't end with "?" counts as failed, and the
+  search falls back to the question as asked. Both prompt versions are registered in
+  `app/prompts/versions.json`.
+
+**Risks:**
+- **Refusal latency.** A refused follow-up took 1.9 s, because the rewrite is an extra model
+  call. That is above NFR-2's 1.5 s target, which was written for refusals with no model call.
+- **Thin margins.** Through the API, C4 and C6 refuse by only about 0.04 and 0.03. The rewrite
+  is a model output, so a different wording on another run could move them. The set is small
+  (six cases).
+- **REQ-R6 deviation:** recorded above, in the D9 amendment.
+
+**Tests:** 117 backend tests passed, including:
+- `test_conversation.py` (9):
+  - append to a conversation, or 404 if it doesn't exist;
+  - the first question is never rewritten;
+  - a follow-up is rewritten with the conversation and searched as rewritten;
+  - the refusal rule judges the rewritten question, with no answering call;
+  - D8: the answer model sees the last 5 messages;
+  - a failed rewrite falls back to the question as asked;
+  - no rewrite when generation is off;
+  - Reset;
+  - the rewrite prompt is registered.
+- `test_rewriter.py` (7) and `test_followup_eval.py` (4).
+
+The frontend has 11 tests (a new one for the conversation state); the typecheck and build pass.
+
+**Simplest options taken:**
+- The rewriter uses the same chat model and settings as answers, at temperature 0.
+- The answer model is given the rewritten question plus the D8 context.
+- The stored question is the one the person typed.
+- `FOLLOWUP_QUERY_QUESTIONS`, the old joined-search setting, is removed.
+- The page shows the conversation turn by turn, and Reset reloads it.

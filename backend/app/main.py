@@ -27,8 +27,9 @@ from app.embeddings import OpenRouterEmbedder
 from app.generation import OpenRouterGenerator
 from app.health import Probes, build_probes, check_components
 from app.logging import configure_logging
-from app.prompts import load_answer_prompt
+from app.prompts import load_answer_prompt, load_rewrite_prompt
 from app.retrieval import Retriever
+from app.rewrite import OpenRouterRewriter
 from app.schemas import AskResponse
 from app.settings import Settings, load_settings, require
 
@@ -41,6 +42,7 @@ class Services:
     store: Store
     generator: Any = None  # the chat model (F4); None means generation is off
     corpus: Any = None  # the indexed corpus for browsing (F7)
+    rewriter: Any = None  # follow-up rewriting (F6, D9 amendment 2)
 
 
 def build_services(settings: Settings) -> Services:
@@ -68,7 +70,7 @@ def build_services(settings: Settings) -> Services:
         top_k=cfg["retrieval_top_k"],
     )
     engine = create_engine(cfg["database_url"].get_secret_value(), pool_pre_ping=True)
-    generator = None
+    generator = rewriter = None
     if settings.generation_enabled:
         chat = require(
             settings,
@@ -90,8 +92,26 @@ def build_services(settings: Settings) -> Services:
             prompt_version=prompt.version,
             system_prompt=prompt.text,
         )
+        rewrite_prompt = load_rewrite_prompt()
+        rewriter = OpenRouterRewriter(
+            api_key=cfg["openrouter_api_key"].get_secret_value(),
+            base_url=cfg["openrouter_base_url"],
+            model=chat["chat_model"],
+            max_tokens=chat["chat_max_tokens"],
+            timeout=chat["generation_timeout_seconds"],
+            reasoning_enabled=chat["chat_reasoning_enabled"],
+            prompt_version=rewrite_prompt.version,
+            system_prompt=rewrite_prompt.text,
+            max_chars=require(settings, "max_question_chars")["max_question_chars"],
+        )
     corpus = CorpusIndex(retriever.client, cfg["qdrant_collection"])
-    return Services(retriever=retriever, store=Store(engine), generator=generator, corpus=corpus)
+    return Services(
+        retriever=retriever,
+        store=Store(engine),
+        generator=generator,
+        corpus=corpus,
+        rewriter=rewriter,
+    )
 
 
 def error(status: int, code: str, message: str) -> JSONResponse:
@@ -106,12 +126,15 @@ def create_app(
     cfg = settings or load_settings()
     configure_logging(cfg.log_level)
     # REQ-R7: no threshold, no API. Checked at startup, not on the first question.
-    required = require(cfg, "refusal_threshold", "max_question_chars")
+    required = require(
+        cfg, "refusal_threshold", "max_question_chars", "conversation_context_messages"
+    )
     ask_config = AskConfig(
         threshold=required["refusal_threshold"],
         max_question_chars=required["max_question_chars"],
         generation_enabled=cfg.generation_enabled,
         conflicts=known_conflicts(cfg.corpus_dir) if cfg.corpus_dir else [],
+        context_messages=required["conversation_context_messages"],
     )
 
     app = FastAPI(title="Policy Assistant API")
@@ -205,6 +228,7 @@ def create_app(
             current.store,
             ask_config,
             current.generator,
+            current.rewriter,
         )
 
     return app

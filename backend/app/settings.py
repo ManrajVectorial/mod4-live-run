@@ -48,7 +48,6 @@ class Settings(BaseSettings):
 
     # Conversation (D8, D9)
     conversation_context_messages: int | None = None
-    followup_query_questions: int | None = None
 
     # API
     max_question_chars: int | None = None

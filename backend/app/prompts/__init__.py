@@ -8,6 +8,7 @@ from pathlib import Path
 
 PROMPTS_DIR = Path(__file__).parent
 ANSWER_PROMPT = PROMPTS_DIR / "answer.md"
+REWRITE_PROMPT = PROMPTS_DIR / "rewrite.md"  # D9 amendment 2: follow-up rewriting
 
 
 @dataclass(frozen=True)
@@ -16,9 +17,18 @@ class Prompt:
     text: str
 
 
+def _load(path: Path) -> Prompt:
+    header, separator, text = path.read_text(encoding="utf-8").partition("\n---\n")
+    if not separator or not header.startswith("version: "):
+        raise ValueError(f"{path.name} must start with 'version: ...' and a '---' line")
+    return Prompt(version=header.removeprefix("version: ").strip(), text=text.strip())
+
+
 @cache
 def load_answer_prompt() -> Prompt:
-    header, separator, text = ANSWER_PROMPT.read_text(encoding="utf-8").partition("\n---\n")
-    if not separator or not header.startswith("version: "):
-        raise ValueError(f"{ANSWER_PROMPT.name} must start with 'version: ...' and a '---' line")
-    return Prompt(version=header.removeprefix("version: ").strip(), text=text.strip())
+    return _load(ANSWER_PROMPT)
+
+
+@cache
+def load_rewrite_prompt() -> Prompt:
+    return _load(REWRITE_PROMPT)

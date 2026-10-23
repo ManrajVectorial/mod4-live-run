@@ -167,3 +167,19 @@ export function documentBanner(
     href: `/corpus/${encodeURIComponent(currentDocumentId)}`,
   };
 }
+
+// F6: the page keeps the conversation it is in. Reset reloads the page, which drops it (C6).
+export type Turn = { question: string; response: AskResponse };
+export type Conversation = { conversationId: string | null; turns: Turn[] };
+
+export const EMPTY_CONVERSATION: Conversation = Object.freeze({
+  conversationId: null,
+  turns: [],
+}) as Conversation;
+
+export function addTurn(conversation: Conversation, question: string, response: AskResponse): Conversation {
+  return {
+    conversationId: response.conversation_id,
+    turns: [...conversation.turns, { question, response }],
+  };
+}

@@ -4,8 +4,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  EMPTY_CONVERSATION,
   NOTICE,
   TOP_BAR_LINKS,
+  addTurn,
   answerParts,
   citationLabel,
   corpusHref,
@@ -123,6 +125,15 @@ test("a superseded document names and links its current version (B3, U17)", () =
 
 test("the top bar links to the pages that exist (U10, U14)", () => {
   assert.deepEqual(TOP_BAR_LINKS, [{ href: "/corpus", label: "Corpus" }]);
+});
+
+test("a conversation keeps its id and turns; Reset starts empty (C3, C6)", () => {
+  const first = addTurn(EMPTY_CONVERSATION, "Q1?", response({ conversation_id: "conv-1" }));
+  assert.equal(first.conversationId, "conv-1");
+  const second = addTurn(first, "And?", response({ conversation_id: "conv-1", status: "refused" }));
+  assert.deepEqual(second.turns.map((t) => t.question), ["Q1?", "And?"]);
+  assert.equal(second.conversationId, "conv-1");
+  assert.deepEqual(EMPTY_CONVERSATION, { conversationId: null, turns: [] });
 });
 
 test("a degraded result says no answer was composed, for every reason (U5)", () => {
