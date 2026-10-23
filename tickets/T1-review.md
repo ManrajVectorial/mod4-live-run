@@ -169,6 +169,7 @@ source.** Low.
   answer's source. The ask page renders the same components.
 - **What I'd do:** prefix the id with the message ID.
 - **Decision:** Deferred (accepted recommendation): it only misdirects a scroll in multi-turn conversations; a one-line fix with the next frontend change.
+- **Update (F9, `c9773c7`):** fixed. Citation anchors carry the message ID; see the F9 addendum.
 
 **FND-5 — The question-length message is off by one, and length is counted before
 trimming.** Low.
@@ -828,3 +829,187 @@ followups 6/6 passed
 | FND-35 | 5. Production readiness | Low | Deferred (accepted recommendation) | re-indexing is manual and rare (scheduled re-indexing is out of scope); fix before the first production re-index |
 | FND-36 | 5. Production readiness | Low | Deferred (accepted recommendation) | cost reporting only; add it with FND-17's logging change |
 | FND-37 | 1. Correctness | (not rated) | Accepted (product owner) | Known limitation: doing better needs more test questions |
+
+## F9 addendum (2026-10-23)
+
+**Scope:** the F9 diff only, `8daf059..c9773c7`: 18 files outside the screenshots, all
+under `frontend/` and `tickets/`. Findings continue from FND-37. The same five passes.
+There are **no high findings**, so nothing needed fixing now. Each finding has its
+decision.
+
+**What I checked before the passes:**
+- **Existence in the installed versions:**
+  - `usePathname`, `useParams` and `useSearchParams` in next 16.4.2 (`next/navigation`);
+  - the `Viewport` type export, through `tsc --noEmit`, which passed;
+  - Node 24.20.0's global `WebSocket`;
+  - Edge's DevTools methods (`Emulation.setDeviceMetricsOverride`,
+    `Page.captureScreenshot` with `captureBeyondViewport`, `Input.insertText`,
+    `Input.dispatchKeyEvent`). All of these ran without error in the screenshot runs.
+- **Nothing outside the frontend changed:**
+  - `git diff --stat` of `frontend/package.json`, `package-lock.json`,
+    `backend/requirements.txt` and `backend/app` is empty;
+  - the licence check passes (77 packages);
+  - backend 129 tests and CI-script 41 tests pass;
+  - the scope check passes.
+- **No new risk surfaces:**
+  - no `dangerouslySetInnerHTML` or `innerHTML`;
+  - no `@import` or `url()` in the stylesheet, and no external URL in the frontend code,
+    so the pages fetch nothing from outside;
+  - fonts are system fonts only.
+- **Class names:** every class used in the TSX has a rule in `globals.css`, except
+  `result--answer`. That one is deliberate: the base `.result` is the answer look, and the
+  class is a hook for the screenshot script.
+
+### F9: 1. Correctness
+
+The criteria were checked through the 22 + 4 screenshot checks, the keyboard-focus
+screenshot and 27 frontend tests (see `T1-F9-ui.md`). I looked at 8 of the screenshots by
+eye.
+
+**FND-38 — The conflict notice is found at its first occurrence, not its last.** Low.
+- **Where:** `frontend/lib/present.ts`, `conflictView` (`indexOf(CONFLICT_LEAD)`).
+- **The risk:** if the model's own text ever contained the exact phrase "These two current
+  policies conflict:", the answer would be split in the wrong place. The backend always
+  appends the notice at the end (`ask.py`, `f"{result.text}\n\n{note}"`).
+- **What I'd do:** use `lastIndexOf`.
+- **Decision:** Deferred (accepted recommendation): Q10 renders correctly today (screenshot
+  `ask-conflict-q10`); a one-word fix for the next frontend change.
+
+**FND-39 — The passages-only result says "No answer was composed" twice.** Low.
+- **Where:** `components/Result.tsx` (`Degraded`): the heading, then `degradedMessage`.
+- **What I'd do:** reword the heading, for example "Policy passages only".
+- **Decision:** Accepted (accepted recommendation): U5 requires the message to say it; the
+  repeat is redundant, not wrong.
+
+**FND-40 — Next's built-in 404 page isn't on the new design, and the skip link has no
+target there.** Low.
+- **Checked:** `curl /no-such-page` returns 404 with Next's own inline-styled `h1` and
+  `0` elements with `id="main"`, while the layout's "Skip to content" link points at
+  `#main`.
+- **What I'd do:** add `app/not-found.tsx` on the shared design.
+- **Decision:** Deferred (accepted recommendation): it isn't one of the four pages F9
+  names; add it with the next frontend change.
+
+**FND-41 — The card's marker number carries an `aria-label` that screen readers
+ignore.** Low.
+- **Where:** `components/Citation.tsx`, `<span className="card__marker" aria-label=…>`. An
+  `aria-label` on a plain span is not announced.
+- **What I'd do:** replace it with visually hidden text, as the answer's markers already
+  have.
+- **Decision:** Deferred (accepted recommendation): the card's visible text (document,
+  section, version) already identifies it; fix with FND-40.
+
+### F9: 2. Security and privacy
+
+No question text is added to any log, URL or request by F9. The pages call only the same
+same-origin `/api/*` routes as before.
+
+**FND-42 — The screenshot script opens Edge's DevTools port while it runs.** Low.
+- **Where:** `frontend/scripts/f9-screens.mjs`, `--remote-debugging-port`
+  (`F9_DEBUG_PORT`, otherwise 9333).
+- **The risk:** while it runs, any process on the machine could drive that headless
+  browser through `127.0.0.1`.
+- **Decision:** Accepted (accepted recommendation): it's a developer tool. The browser uses
+  a fresh temporary profile with no credentials, and it is killed at the end; it never
+  runs in CI or production.
+
+**FND-43 — The committed screenshots show stored questions, in a public repository.** Low.
+- **Where:** `tickets/evidence/F9/history-*.png` and `history-conversation-*.png`.
+- **Checked:** by eye, the history screenshot shows only test and eval questions asked
+  during this build, including the 1,000-character "xxxx…" one. No real user's question
+  is in the local store.
+- **Decision:** Accepted (accepted recommendation): nothing sensitive. Any future
+  screenshot must be taken against a store with no real questions in it.
+
+### F9: 3. Maintainability
+
+**FND-44 — The screenshot and accessibility checks don't run in CI.** Medium.
+- **Where:** `frontend/scripts/f9-screens.mjs` needs Edge plus the API and web servers
+  with a live provider. CI runs only the unit tests, the typecheck and the build.
+- **The gap:** a layout regression like the history overflow these checks caught would
+  pass CI.
+- **What I'd do:** a CI job that starts both servers with generation off, then runs the
+  script on the pages and states that don't need the model.
+- **Decision:** Deferred (accepted recommendation): it needs services in CI and a browser
+  on the runner, which is deployment-stage work; until then the script is run by hand
+  before each release, as here.
+
+**FND-45 — The frontend reads structure out of backend wording.** Low.
+- **Where:** `refusalView` splits the D5 text at "Who to ask:", and `conflictView` looks
+  for the D6 lead. Both are in `lib/present.ts`.
+- **The guard:** `lib/views.test.ts` reads `backend/app/text/refusal.md` and
+  `conflict.md`, so a wording change fails the tests.
+- **Decision:** Accepted (accepted recommendation): the agreed API has no separate fields
+  for these, and adding them would change it (rule 4); the tests guard the coupling.
+
+**FND-46 — The test fixtures are duplicated.** Low.
+- **Where:** `lib/present.test.ts` and `lib/views.test.ts` each build their own `Source`
+  and `AskResponse`.
+- **Decision:** Accepted (accepted recommendation): each file stays readable on its own;
+  merge them if a third file needs them.
+
+**FND-47 — The screenshot script holds some values in code.** Low.
+- **Where:** `f9-screens.mjs`: the DevTools port fallback (9333), the 3,200 px height cap
+  and the eval questions it asks.
+- **Rule 5:** the base URL and Edge's path come from the environment, as rule 5 needs.
+- **Decision:** Accepted (accepted recommendation): test fixtures and a local port, not a
+  model name, URL or threshold.
+
+### F9: 4. Licences and origin
+
+- **No new packages:** the diff of `package.json` and `package-lock.json` is empty. All
+  CSS is hand-written. No fonts, images or icon sets are added; the icons are inline SVG.
+- **Fonts:** Segoe UI and the system fallbacks belong to the viewer's machine and aren't
+  shipped.
+- **Screenshots:** they show the corpus, which was supplied with the brief.
+
+**FND-48 — The check icon's path matches a common icon set.** Low.
+- **Where:** `components/Icon.tsx`, `check: "M20 6 9 17l-5-5"`.
+- **What I know:** I wrote it from memory. As far as I know it is the same path as the
+  check icon in Lucide (ISC) and Feather (MIT). I haven't checked against their source.
+  The other paths are my own drawings of simple shapes.
+- **What I'd do:** redraw it, or keep it with a one-line ISC notice. Both licences are
+  permissive, so rule 7 isn't breached either way.
+- **Decision:** Deferred (accepted recommendation): redraw it at the next frontend change.
+
+### F9: 5. Production readiness
+
+The states were checked live:
+- **Passages only:** with the API restarted as `GENERATION_ENABLED=false`, the page shows
+  `degraded` with the passages.
+- **Error:** with the API stopped, the proxy's "The service is unavailable. Try again
+  shortly." is shown as an error with what to try and a Try again button.
+- **Loading:** shown while the question is pending, with the box and button disabled.
+
+**FND-49 — Only checked in headless Edge.** Low.
+- **What I haven't checked:**
+  - Firefox and Safari;
+  - a screen reader;
+  - automated contrast beyond the token pairs (for example text over the
+    semi-transparent brand mark).
+- **Decision:** Deferred (accepted recommendation): to the verification stage, on the
+  browsers the bank actually uses.
+
+**FND-50 — The "Searching the policy documents" state never times out on its own.** Low.
+- **Where:** `lib/api.ts`: the browser's `fetch` has no time limit, and neither does the
+  proxy (FND-32).
+- **What happens:** if the API hangs, the loading state stays up rather than turning into
+  an error. By reading, not reproduced.
+- **What I'd do:** an `AbortSignal.timeout` read from a setting, together with FND-32.
+- **Decision:** Deferred (accepted recommendation): fix with FND-32 at the deployment
+  stage.
+
+### F9 addendum summary
+
+| Pass | Findings | Count |
+|---|---|---|
+| 1. Correctness | FND-38 to FND-41 | 4 |
+| 2. Security and privacy | FND-42, FND-43 | 2 |
+| 3. Maintainability | FND-44 to FND-47 | 4 |
+| 4. Licences and origin | FND-48 | 1 |
+| 5. Production readiness | FND-49, FND-50 | 2 |
+| **Total** | | **13** (0 high, 1 medium, 12 low) |
+
+**Decisions:** 6 accepted (FND-39, 42, 43, 45, 46, 47) and 7 deferred (FND-38, 40, 41, 44,
+48, 49, 50), all as accepted recommendations. F9 also fixes **FND-4** from the main review:
+citation anchors now carry the message ID (test: "citation anchors are unique per answer").
