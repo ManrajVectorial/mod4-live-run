@@ -28,11 +28,13 @@ from urllib.parse import urlparse
 from qdrant_client import QdrantClient
 
 from app.embeddings import OpenRouterEmbedder
+from app.refusal import clears
 from app.retrieval import Hit, Retriever
 from app.settings import REPO_ROOT, SettingsError, load_settings, require
 
 QUESTION_HEADING = re.compile(r"^### (Q\d+) — (?:⭐ )?(.+?)\s*$")
 RESULTS_FILE = REPO_ROOT / "tickets" / "eval-results.md"
+VARIANTS_FILE = REPO_ROOT / "backend" / "eval" / "variants.md"
 
 TE, KYC = "travel-expense-policy-v3.1", "client-onboarding-kyc-v2.4"
 RR, OUT = "records-retention-v4.0", "outsourcing-third-party-v1.8"
@@ -121,6 +123,25 @@ def results_table(
     return "\n".join(lines)
 
 
+def variant_verdict(qid: str, top_score: float | None, threshold: float) -> str:
+    """Does a rephrased question land on the same side of the threshold as the original?"""
+    cleared = clears(top_score, threshold)
+    wanted = bool(EXPECTED[qid])
+    word = "clears" if cleared else "refuses"
+    return f"ok ({word})" if cleared == wanted else f"MISMATCH ({word})"
+
+
+def run_variants(retriever: Retriever, threshold: float) -> tuple[list[str], int]:
+    lines = ["| Q | rephrased question | top score | verdict |", "|---|---|---|---|"]
+    mismatches = 0
+    for v in load_questions(VARIANTS_FILE):
+        top = retriever.retrieve(v.text).top_current_score
+        verdict = variant_verdict(v.qid, top, threshold)
+        mismatches += verdict.startswith("MISMATCH")
+        lines.append(f"| {v.qid} | {v.text} | {'—' if top is None else f'{top:.4f}'} | {verdict} |")
+    return lines, mismatches
+
+
 def summary(api_rows: list[Row]) -> tuple[int, int]:
     """(answerable questions answered with the expected section, of 10; refused, of 3)."""
     answered = sum(outcome(r.qid, r) == "PASS" for r in api_rows if EXPECTED[r.qid])
@@ -193,6 +214,11 @@ def format_rows(rows: list[Row]) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Ask the 13 EVALUATION.md questions via the API.")
     parser.add_argument("--url", help="API base URL (default: EVAL_API_BASE_URL)")
+    parser.add_argument(
+        "--variants",
+        action="store_true",
+        help="check the rephrased questions in backend/eval/variants.md against the threshold",
+    )
     args = parser.parse_args(argv)
     # The questions contain "£"; Windows consoles default to a code page that can't print it.
     for stream in (sys.stdout, sys.stderr):
@@ -234,6 +260,15 @@ def main(argv: list[str] | None = None) -> int:
         ),
         top_k=cfg["retrieval_top_k"],
     )
+    if args.variants:
+        if settings.refusal_threshold is None:
+            print("Missing settings: REFUSAL_THRESHOLD", file=sys.stderr)
+            return 2
+        lines, mismatches = run_variants(retriever, settings.refusal_threshold)
+        print("\n".join(lines))
+        print(f"{mismatches} mismatches at REFUSAL_THRESHOLD={settings.refusal_threshold}")
+        return 1 if mismatches else 0
+
     hits = {q.qid: top_three_hits(retriever, q.text) for q in questions}
     rows = run(questions, base_url, cfg["eval_timeout_seconds"])
     table = results_table(questions, hits, rows)

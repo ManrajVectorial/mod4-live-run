@@ -44,6 +44,27 @@ def test_errors_are_reported_per_row_not_hidden():
     assert [r.status for r in rows] == ["error: HTTP 404", "error: HTTP 404"]
 
 
+def test_variants_file_rephrases_every_question_twice():
+    from app.eval import VARIANTS_FILE
+
+    variants = load_questions(VARIANTS_FILE)
+    counts = {f"Q{n}": 0 for n in range(1, 14)}
+    for v in variants:
+        counts[v.qid] += 1
+    assert counts == {q: 2 for q in counts}
+    originals = {q.text for q in load_questions(EVALUATION_FILE)}
+    assert not originals & {v.text for v in variants}  # rephrased, not copied
+
+
+def test_variant_verdicts_follow_threshold():
+    from app.eval import variant_verdict
+
+    assert variant_verdict("Q1", 0.60, 0.5092) == "ok (clears)"
+    assert variant_verdict("Q1", 0.5092, 0.5092) == "MISMATCH (refuses)"  # equal does not clear
+    assert variant_verdict("Q13", 0.30, 0.5092) == "ok (refuses)"
+    assert variant_verdict("Q13", 0.52, 0.5092) == "MISMATCH (clears)"
+
+
 def test_refusal_row_with_no_sources():
     questions = load_questions(EVALUATION_FILE)[12:]
 

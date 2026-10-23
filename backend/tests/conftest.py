@@ -89,7 +89,14 @@ def fake_embedder() -> FakeEmbedder:
 @pytest.fixture
 def make_settings():
     def _make(**overrides) -> Settings:
-        values = {"generation_enabled": True, "healthz_timeout_seconds": 0.5, **overrides}
+        values = {
+            "generation_enabled": True,
+            "healthz_timeout_seconds": 0.5,
+            # The API refuses to start without these (REQ-R7, REQ-A3).
+            "refusal_threshold": 0.5,
+            "max_question_chars": 500,
+            **overrides,
+        }
         return load_settings(_env_file=None, **values)
 
     return _make
