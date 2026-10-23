@@ -92,12 +92,15 @@ UNANSWERABLE = [
 ]
 
 
-def make_client(make_settings, hits, store=None, generator=None, retriever=None, **settings):
+def make_client(
+    make_settings, hits, store=None, generator=None, retriever=None, corpus=None, **settings
+):
     values = {"refusal_threshold": THRESHOLD, "max_question_chars": 500, **settings}
     services = Services(
         retriever=retriever or StubRetriever(hits),
         store=store or memory_store(),
         generator=generator,
+        corpus=corpus,
     )
     app = create_app(settings=make_settings(**values), probes=None, services=services)
     return TestClient(app, raise_server_exceptions=False), services

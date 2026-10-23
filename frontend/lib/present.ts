@@ -110,3 +110,60 @@ export function degradedMessage(reason: DegradedReason): string {
   };
   return `No answer was composed (${why[reason]}). These are the policy passages that matched your question.`;
 }
+
+// F7: browsing the indexed documents (PRD §5.2, §5.3).
+export type CorpusDocument = {
+  document_id: string;
+  policy_id: string;
+  title: string;
+  version: string;
+  status: "current" | "superseded";
+  effective: string;
+  owner: string;
+  supersedes: string | null;
+  superseded_by: string | null;
+  superseded_on: string | null;
+  passage_count: number;
+  indexed_at: string | null;
+};
+
+export type CorpusSection = {
+  section: string;
+  section_title: string;
+  heading_path: string[];
+  passages: { passage_id: string; text: string }[];
+};
+
+export type DocumentResponse = {
+  document: CorpusDocument;
+  current_document_id: string;
+  sections: CorpusSection[];
+};
+
+// REQ-U10, U14: only links to pages that exist.
+export const TOP_BAR_LINKS: readonly { href: string; label: string }[] = [
+  { href: "/corpus", label: "Corpus" },
+];
+
+export function sectionAnchor(section: string): string {
+  return `section-${section}`;
+}
+
+// REQ-B4: a citation opens its section in the document.
+export function corpusHref(source: Pick<Source, "document_id" | "section">): string {
+  return `/corpus/${encodeURIComponent(source.document_id)}#${sectionAnchor(source.section)}`;
+}
+
+// REQ-B3 and U17: a superseded document says so and links to the current version.
+export function documentBanner(
+  doc: Pick<CorpusDocument, "status" | "superseded_by" | "superseded_on">,
+  currentDocumentId: string,
+): { text: string; href: string } | null {
+  if (doc.status !== "superseded") return null;
+  const when = doc.superseded_on ? `Superseded on ${DATE.format(new Date(doc.superseded_on))}` : "Superseded";
+  const current = doc.superseded_by ? ` The current version is v${doc.superseded_by}.` : "";
+  return {
+    text: `${when}: this version is kept for reference only.${current}`,
+    href: `/corpus/${encodeURIComponent(currentDocumentId)}`,
+  };
+}

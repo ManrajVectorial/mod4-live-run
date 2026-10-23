@@ -21,6 +21,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.ask import ApiError, AskConfig, RetrieverLike, handle_ask
 from app.conflicts import known_conflicts
+from app.corpus_index import CorpusIndex, DocumentNotFound
 from app.db import Store
 from app.embeddings import OpenRouterEmbedder
 from app.generation import OpenRouterGenerator
@@ -39,6 +40,7 @@ class Services:
     retriever: RetrieverLike
     store: Store
     generator: Any = None  # the chat model (F4); None means generation is off
+    corpus: Any = None  # the indexed corpus for browsing (F7)
 
 
 def build_services(settings: Settings) -> Services:
@@ -88,7 +90,8 @@ def build_services(settings: Settings) -> Services:
             prompt_version=prompt.version,
             system_prompt=prompt.text,
         )
-    return Services(retriever=retriever, store=Store(engine), generator=generator)
+    corpus = CorpusIndex(retriever.client, cfg["qdrant_collection"])
+    return Services(retriever=retriever, store=Store(engine), generator=generator, corpus=corpus)
 
 
 def error(status: int, code: str, message: str) -> JSONResponse:
@@ -168,6 +171,19 @@ def create_app(
             "components": components,
             "version": cfg.app_version or "unknown",
         }
+
+    @app.get("/api/corpus")
+    async def corpus_list() -> dict[str, object]:
+        index = get_services().corpus
+        return {"documents": await run_in_threadpool(index.documents)}
+
+    @app.get("/api/corpus/{document_id}")
+    async def corpus_document(document_id: str) -> dict[str, object]:
+        index = get_services().corpus
+        try:
+            return await run_in_threadpool(index.document, document_id)
+        except DocumentNotFound as exc:
+            raise ApiError(404, "document_not_found", "That document isn't in the corpus.") from exc
 
     @app.post("/api/ask", response_model=AskResponse)
     async def ask(request: Request) -> AskResponse:

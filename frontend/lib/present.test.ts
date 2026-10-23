@@ -5,8 +5,12 @@ import { test } from "node:test";
 
 import {
   NOTICE,
+  TOP_BAR_LINKS,
   answerParts,
   citationLabel,
+  corpusHref,
+  documentBanner,
+  sectionAnchor,
   degradedMessage,
   indexedLabel,
   splitSources,
@@ -98,6 +102,27 @@ test("the standing notice says it is policy, not a decision, and where exception
   assert.match(NOTICE, /what the policy says/);
   assert.match(NOTICE, /not a decision/);
   assert.match(NOTICE, /exception/i);
+});
+
+test("a citation links to its section in the document (B4)", () => {
+  assert.equal(corpusHref(current), "/corpus/travel-expense-policy-v3.1#section-4.2");
+  assert.equal(sectionAnchor("4.2"), "section-4.2");
+});
+
+test("a superseded document names and links its current version (B3, U17)", () => {
+  const banner = documentBanner(
+    { status: "superseded", superseded_by: "3.1", superseded_on: "2026-04-01" },
+    "travel-expense-policy-v3.1",
+  );
+  assert.deepEqual(banner, {
+    text: "Superseded on 1 April 2026: this version is kept for reference only. The current version is v3.1.",
+    href: "/corpus/travel-expense-policy-v3.1",
+  });
+  assert.equal(documentBanner({ status: "current", superseded_by: null, superseded_on: null }, "x"), null);
+});
+
+test("the top bar links to the pages that exist (U10, U14)", () => {
+  assert.deepEqual(TOP_BAR_LINKS, [{ href: "/corpus", label: "Corpus" }]);
 });
 
 test("a degraded result says no answer was composed, for every reason (U5)", () => {
