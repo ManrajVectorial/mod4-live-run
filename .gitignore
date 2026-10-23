@@ -21,6 +21,7 @@ build/
 node_modules/
 .next/
 out/
+*.tsbuildinfo
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -34,3 +35,9 @@ Thumbs.db
 
 # Claude Code local-only settings
 .claude/settings.local.json
+
+# Archives (for example a stray copy of the corpus): never committed
+*.zip
+
+# Local server logs
+*.log

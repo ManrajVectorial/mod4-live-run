@@ -3,9 +3,9 @@
 These rules apply to every stage of the Policy Assistant build. They override any default
 behaviour, skill or plugin workflow.
 
-1. **Protected files.** Never edit `backend/corpus/`, `docs/project-brief.md`, `AGENTS.md` or
-   `CLAUDE.md`. Once the requirements are approved, `docs/PRD.md` and `docs/features.md` are
-   protected too. If one seems to need a change, stop and ask.
+1. **Protected files.** Never edit `backend/corpus/`, `docs/project-brief.md`, `docs/PRD.md`,
+   `docs/features.md`, `AGENTS.md` or `CLAUDE.md` (PRD and features approved 2026-10-23). If
+   one seems to need a change, stop and ask.
 2. **Decisions are ours.** When something is left open, set out the options, the trade-off of
    each and a recommendation, then stop and wait. Never fill an open decision in yourself.
 3. **Stages run in order:** requirements → design and planning → implementation → testing and

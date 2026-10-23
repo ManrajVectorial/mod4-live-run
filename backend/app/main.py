@@ -1,0 +1,285 @@
+"""FastAPI app. Run with: uvicorn --factory app.main:serve (create_app without the startup
+indexing, which is what the tests build)
+
+The factory pattern keeps settings from loading at import time, so tests build the app
+with their own settings, probes and services and never read the real .env.
+"""
+
+import json
+import logging
+import threading
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
+from dataclasses import dataclass
+from typing import Any
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from qdrant_client import QdrantClient
+from sqlalchemy import create_engine
+from starlette.concurrency import run_in_threadpool
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app.ask import ApiError, AskConfig, RetrieverLike, handle_ask
+from app.conflicts import known_conflicts
+from app.corpus_index import CorpusIndex, DocumentNotFound
+from app.db import Store
+from app.embeddings import OpenRouterEmbedder
+from app.generation import OpenRouterGenerator
+from app.health import Probes, build_probes, check_components
+from app.history import HistoryNotFound, conversation_detail, list_conversations
+from app.index_bootstrap import IndexStatus, bootstrap_from_settings
+from app.logging import configure_logging
+from app.prompts import load_answer_prompt, load_rewrite_prompt
+from app.retrieval import Retriever
+from app.rewrite import OpenRouterRewriter
+from app.schemas import AskResponse
+from app.settings import Settings, load_settings, require
+
+log = logging.getLogger("app.main")
+
+
+@dataclass
+class Services:
+    retriever: RetrieverLike
+    store: Store
+    generator: Any = None  # the chat model (F4); None means generation is off
+    corpus: Any = None  # the indexed corpus for browsing (F7)
+    rewriter: Any = None  # follow-up rewriting (F6, D9 amendment 2)
+
+
+def build_services(settings: Settings) -> Services:
+    cfg = require(
+        settings,
+        "qdrant_url",
+        "qdrant_collection",
+        "openrouter_api_key",
+        "openrouter_base_url",
+        "embedding_model",
+        "embedding_timeout_seconds",
+        "retrieval_top_k",
+        "database_url",
+    )
+    qdrant_key = settings.qdrant_api_key.get_secret_value() if settings.qdrant_api_key else None
+    retriever = Retriever(
+        client=QdrantClient(url=cfg["qdrant_url"], api_key=qdrant_key),
+        collection=cfg["qdrant_collection"],
+        embedder=OpenRouterEmbedder(
+            api_key=cfg["openrouter_api_key"].get_secret_value(),
+            base_url=cfg["openrouter_base_url"],
+            model=cfg["embedding_model"],
+            timeout=cfg["embedding_timeout_seconds"],
+        ),
+        top_k=cfg["retrieval_top_k"],
+    )
+    engine = create_engine(cfg["database_url"].get_secret_value(), pool_pre_ping=True)
+    generator = rewriter = None
+    if settings.generation_enabled:
+        chat = require(
+            settings,
+            "chat_model",
+            "chat_temperature",
+            "chat_max_tokens",
+            "chat_reasoning_enabled",
+            "generation_timeout_seconds",
+        )
+        prompt = load_answer_prompt()
+        generator = OpenRouterGenerator(
+            api_key=cfg["openrouter_api_key"].get_secret_value(),
+            base_url=cfg["openrouter_base_url"],
+            model=chat["chat_model"],
+            temperature=chat["chat_temperature"],
+            max_tokens=chat["chat_max_tokens"],
+            timeout=chat["generation_timeout_seconds"],
+            reasoning_enabled=chat["chat_reasoning_enabled"],
+            prompt_version=prompt.version,
+            system_prompt=prompt.text,
+        )
+        rewrite_prompt = load_rewrite_prompt()
+        rewriter = OpenRouterRewriter(
+            api_key=cfg["openrouter_api_key"].get_secret_value(),
+            base_url=cfg["openrouter_base_url"],
+            model=chat["chat_model"],
+            max_tokens=chat["chat_max_tokens"],
+            timeout=chat["generation_timeout_seconds"],
+            reasoning_enabled=chat["chat_reasoning_enabled"],
+            prompt_version=rewrite_prompt.version,
+            system_prompt=rewrite_prompt.text,
+            max_chars=require(settings, "max_question_chars")["max_question_chars"],
+        )
+    corpus = CorpusIndex(retriever.client, cfg["qdrant_collection"])
+    return Services(
+        retriever=retriever,
+        store=Store(engine),
+        generator=generator,
+        corpus=corpus,
+        rewriter=rewriter,
+    )
+
+
+def error(status: int, code: str, message: str) -> JSONResponse:
+    return JSONResponse({"error": {"code": code, "message": message}}, status_code=status)
+
+
+def serve() -> FastAPI:
+    """What the container runs: the app, plus loading the documents at startup when the
+    index is empty. Run with: uvicorn --factory app.main:serve"""
+    return create_app(index_bootstrap=bootstrap_from_settings)
+
+
+def create_app(
+    settings: Settings | None = None,
+    probes: Probes | None = None,
+    services: Services | None = None,
+    index_bootstrap: Callable[[Settings, IndexStatus], None] | None = None,
+) -> FastAPI:
+    cfg = settings or load_settings()
+    configure_logging(cfg.log_level)
+    # REQ-R7: no threshold, no API. Checked at startup, not on the first question.
+    required = require(
+        cfg,
+        "refusal_threshold",
+        "max_question_chars",
+        "conversation_context_messages",
+        "history_enabled",
+    )
+    ask_config = AskConfig(
+        threshold=required["refusal_threshold"],
+        max_question_chars=required["max_question_chars"],
+        generation_enabled=cfg.generation_enabled,
+        conflicts=known_conflicts(cfg.corpus_dir) if cfg.corpus_dir else [],
+        context_messages=required["conversation_context_messages"],
+    )
+
+    index_status = IndexStatus()
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        if index_bootstrap is not None:
+            # In the background, so the server (and /healthz) is up while it indexes.
+            threading.Thread(
+                target=index_bootstrap, args=(cfg, index_status), name="index", daemon=True
+            ).start()
+        yield
+
+    app = FastAPI(title="Policy Assistant API", lifespan=lifespan)
+    app.state.index = index_status
+    # REQ-A10. The web app calls through its same-origin proxy, so normally no origin is
+    # listed and browsers on other sites get no CORS permission at all.
+    origins = [o.strip() for o in (cfg.cors_allowed_origins or "").split(",") if o.strip()]
+    if origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_methods=["GET", "POST"],
+            allow_headers=["content-type"],
+        )
+    app.state.probes = probes or build_probes(cfg)
+    app.state.services = services
+    services_lock = threading.Lock()
+
+    def get_services() -> Services:
+        # Built on first use, so /healthz answers even if a store is down at startup.
+        if app.state.services is None:
+            with services_lock:
+                if app.state.services is None:
+                    app.state.services = build_services(cfg)
+        return app.state.services
+
+    @app.exception_handler(ApiError)
+    async def api_error(_: Request, exc: ApiError) -> JSONResponse:
+        return error(exc.status, exc.code, exc.message)
+
+    @app.exception_handler(RequestValidationError)
+    async def bad_request(_: Request, exc: RequestValidationError) -> JSONResponse:
+        return error(422, "question_blank", "Enter a question.")
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+        code = {404: "not_found", 405: "method_not_allowed"}.get(exc.status_code, "internal_error")
+        return error(exc.status_code, code, str(exc.detail))
+
+    @app.exception_handler(Exception)
+    async def unexpected(_: Request, exc: Exception) -> JSONResponse:
+        # Only the type is logged: messages and SQL parameters can carry the question.
+        log.error("unhandled error: %s", type(exc).__name__)
+        return error(500, "internal_error", "Something went wrong. Try again shortly.")
+
+    @app.get("/")
+    def root() -> dict[str, str]:
+        return {"service": "policy-assistant-api"}
+
+    @app.get("/healthz")
+    async def healthz(request: Request) -> dict[str, object]:
+        components = await check_components(
+            request.app.state.probes, cfg.generation_enabled, cfg.healthz_timeout_seconds
+        )
+        healthy = all(value in ("ok", "disabled") for value in components.values())
+        # Still 200 while indexing, so the platform's health check passes; "degraded"
+        # until the documents are loaded, and the count says how far it has got.
+        healthy = healthy and request.app.state.index.ready
+        return {
+            "status": "ok" if healthy else "degraded",
+            "components": components,
+            "index": request.app.state.index.snapshot(),
+            "version": cfg.app_version or "unknown",
+        }
+
+    @app.get("/api/corpus")
+    async def corpus_list() -> dict[str, object]:
+        index = get_services().corpus
+        return {"documents": await run_in_threadpool(index.documents)}
+
+    @app.get("/api/corpus/{document_id}")
+    async def corpus_document(document_id: str) -> dict[str, object]:
+        index = get_services().corpus
+        try:
+            return await run_in_threadpool(index.document, document_id)
+        except DocumentNotFound as exc:
+            raise ApiError(404, "document_not_found", "That document isn't in the corpus.") from exc
+
+    if required["history_enabled"]:
+        # FND-9: these return every stored question to anyone who can reach the API, so
+        # they exist only when HISTORY_ENABLED is true. Off, they are a plain 404 not_found.
+
+        @app.get("/api/conversations")
+        async def conversations_list() -> dict[str, object]:
+            store = get_services().store
+            return {"conversations": await run_in_threadpool(list_conversations, store)}
+
+        @app.get("/api/conversations/{conversation_id}")
+        async def conversation(conversation_id: str) -> dict[str, object]:
+            store = get_services().store
+            try:
+                return await run_in_threadpool(conversation_detail, store, conversation_id)
+            except HistoryNotFound as exc:
+                raise ApiError(
+                    404, "conversation_not_found", "That conversation doesn't exist."
+                ) from exc
+
+    @app.post("/api/ask", response_model=AskResponse)
+    async def ask(request: Request) -> AskResponse:
+        # Parsed here, not by FastAPI, so a body that isn't UTF-8 JSON gets the agreed
+        # 422 question_blank instead of a framework 400.
+        try:
+            body = json.loads((await request.body()).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            body = None
+        if not isinstance(body, dict):
+            raise ApiError(422, "question_blank", "Enter a question.")
+        current = get_services()
+        conversation = body.get("conversation_id")
+        return await run_in_threadpool(  # the ask path blocks on the network and database
+            handle_ask,
+            body.get("question"),
+            None if conversation is None else str(conversation),
+            current.retriever,
+            current.store,
+            ask_config,
+            current.generator,
+            current.rewriter,
+        )
+
+    return app

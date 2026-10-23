@@ -1,0 +1,11 @@
+# Runtime dependencies, pinned as approved in tickets/T1-plan.md §2.
+# Anything not listed here needs approval first (AGENTS.md rule 4).
+fastapi==0.161.1
+uvicorn==0.54.0
+pydantic-settings==2.16.1
+sqlalchemy==2.1.6
+pg8000==1.31.5
+qdrant-client==1.20.0
+openai==3.37.0
+pyyaml==6.0.3
+python-dotenv==1.2.4
