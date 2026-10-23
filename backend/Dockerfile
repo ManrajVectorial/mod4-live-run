@@ -18,5 +18,6 @@ COPY corpus ./corpus
 RUN useradd --system --no-create-home appuser
 USER appuser
 
+# serve: the app plus loading the documents at startup when the index is empty.
 # Railway supplies PORT. There is no default: the container refuses to start without it.
-CMD ["sh", "-c", "exec uvicorn --factory app.main:create_app --host 0.0.0.0 --port ${PORT:?PORT must be set}"]
+CMD ["sh", "-c", "exec uvicorn --factory app.main:serve --host 0.0.0.0 --port ${PORT:?PORT must be set}"]

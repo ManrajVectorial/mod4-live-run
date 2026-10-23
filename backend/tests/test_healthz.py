@@ -26,6 +26,7 @@ def test_all_components_ok(make_settings, healthy_probes):
     assert body == {
         "status": "ok",
         "components": {"postgres": "ok", "qdrant": "ok", "generation": "ok"},
+        "index": {"status": "not_checked", "passages": None},  # no bootstrap in tests
         "version": "abc123",
     }
 

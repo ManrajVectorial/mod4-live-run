@@ -1,4 +1,5 @@
-"""FastAPI app. Run with: uvicorn --factory app.main:create_app
+"""FastAPI app. Run with: uvicorn --factory app.main:serve (create_app without the startup
+indexing, which is what the tests build)
 
 The factory pattern keeps settings from loading at import time, so tests build the app
 with their own settings, probes and services and never read the real .env.
@@ -7,6 +8,8 @@ with their own settings, probes and services and never read the real .env.
 import json
 import logging
 import threading
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,6 +30,7 @@ from app.embeddings import OpenRouterEmbedder
 from app.generation import OpenRouterGenerator
 from app.health import Probes, build_probes, check_components
 from app.history import HistoryNotFound, conversation_detail, list_conversations
+from app.index_bootstrap import IndexStatus, bootstrap_from_settings
 from app.logging import configure_logging
 from app.prompts import load_answer_prompt, load_rewrite_prompt
 from app.retrieval import Retriever
@@ -119,10 +123,17 @@ def error(status: int, code: str, message: str) -> JSONResponse:
     return JSONResponse({"error": {"code": code, "message": message}}, status_code=status)
 
 
+def serve() -> FastAPI:
+    """What the container runs: the app, plus loading the documents at startup when the
+    index is empty. Run with: uvicorn --factory app.main:serve"""
+    return create_app(index_bootstrap=bootstrap_from_settings)
+
+
 def create_app(
     settings: Settings | None = None,
     probes: Probes | None = None,
     services: Services | None = None,
+    index_bootstrap: Callable[[Settings, IndexStatus], None] | None = None,
 ) -> FastAPI:
     cfg = settings or load_settings()
     configure_logging(cfg.log_level)
@@ -142,7 +153,19 @@ def create_app(
         context_messages=required["conversation_context_messages"],
     )
 
-    app = FastAPI(title="Policy Assistant API")
+    index_status = IndexStatus()
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        if index_bootstrap is not None:
+            # In the background, so the server (and /healthz) is up while it indexes.
+            threading.Thread(
+                target=index_bootstrap, args=(cfg, index_status), name="index", daemon=True
+            ).start()
+        yield
+
+    app = FastAPI(title="Policy Assistant API", lifespan=lifespan)
+    app.state.index = index_status
     # REQ-A10. The web app calls through its same-origin proxy, so normally no origin is
     # listed and browsers on other sites get no CORS permission at all.
     origins = [o.strip() for o in (cfg.cors_allowed_origins or "").split(",") if o.strip()]
@@ -194,9 +217,13 @@ def create_app(
             request.app.state.probes, cfg.generation_enabled, cfg.healthz_timeout_seconds
         )
         healthy = all(value in ("ok", "disabled") for value in components.values())
+        # Still 200 while indexing, so the platform's health check passes; "degraded"
+        # until the documents are loaded, and the count says how far it has got.
+        healthy = healthy and request.app.state.index.ready
         return {
             "status": "ok" if healthy else "degraded",
             "components": components,
+            "index": request.app.state.index.snapshot(),
             "version": cfg.app_version or "unknown",
         }
 

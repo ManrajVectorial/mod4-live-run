@@ -3,7 +3,8 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [work/build]
+    # main too: Railway's "wait for CI" deploys a main commit only once its gate is green.
+    branches: [work/build, main]
 
 permissions:
   contents: read
