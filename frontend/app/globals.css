@@ -8,6 +8,15 @@
   --border: #d6dae1;
   --accent: #1f4e8c;
   --accent-text: #ffffff;
+  --answer-edge: #1f4e8c;
+  --refused-bg: #fff4e5;
+  --refused-edge: #b45309;
+  --refused-text: #5c2d05;
+  --degraded-bg: #f1f3f6;
+  --degraded-edge: #5b6270;
+  --superseded-bg: #fde8e8;
+  --superseded-text: #8a1c1c;
+  --error-text: #8a1c1c;
 }
 
 *,
@@ -90,4 +99,123 @@ body {
   display: flex;
   justify-content: flex-end;
   margin-top: 0.75rem;
+}
+
+/* Results (REQ-U2 to U8). Each status has its own unmistakable look. */
+.status,
+.error {
+  margin: 1rem 0;
+}
+
+.error {
+  color: var(--error-text);
+  font-weight: 600;
+}
+
+.result {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  border-left: 6px solid var(--answer-edge);
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 0 0 1px var(--border);
+  overflow-wrap: anywhere;
+}
+
+.result--refused {
+  border-left-color: var(--refused-edge);
+  background: var(--refused-bg);
+  color: var(--refused-text);
+  box-shadow: 0 0 0 1px var(--refused-edge);
+}
+
+.result--degraded {
+  border-left-color: var(--degraded-edge);
+  border-left-style: dashed;
+  background: var(--degraded-bg);
+}
+
+.result__heading {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.answer__marker {
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--accent);
+}
+
+.citations {
+  margin-top: 1rem;
+}
+
+.citations__title {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+  color: var(--muted);
+}
+
+.citations__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.citation {
+  margin: 0.25rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.citation--superseded {
+  background: var(--superseded-bg);
+}
+
+.citation summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+
+.citation__marker {
+  font-weight: 600;
+}
+
+.citation__text {
+  margin: 0.5rem 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.badge--superseded {
+  background: var(--superseded-text);
+  color: var(--bg);
+}
+
+.result__footer {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.result__footer p {
+  margin: 0.25rem 0;
 }

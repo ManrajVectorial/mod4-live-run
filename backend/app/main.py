@@ -12,6 +12,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from qdrant_client import QdrantClient
 from sqlalchemy import create_engine
@@ -111,6 +112,16 @@ def create_app(
     )
 
     app = FastAPI(title="Policy Assistant API")
+    # REQ-A10. The web app calls through its same-origin proxy, so normally no origin is
+    # listed and browsers on other sites get no CORS permission at all.
+    origins = [o.strip() for o in (cfg.cors_allowed_origins or "").split(",") if o.strip()]
+    if origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_methods=["GET", "POST"],
+            allow_headers=["content-type"],
+        )
     app.state.probes = probes or build_probes(cfg)
     app.state.services = services
     services_lock = threading.Lock()

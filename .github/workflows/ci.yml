@@ -79,7 +79,7 @@ jobs:
         run: python ci/check_licences.py --node-modules frontend/node_modules
 
   frontend:
-    name: frontend typecheck and build
+    name: frontend typecheck, tests and build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -93,6 +93,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
+      - run: npm test
       - run: npm run build
 
   gate:
