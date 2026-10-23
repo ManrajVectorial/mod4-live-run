@@ -1,6 +1,6 @@
 # T1-F5 — The web page
 
-**Status:** done for the automated checks (2026-10-23). **The visual check in a browser is yours** (A30, A31): see below.
+**Status:** done (2026-10-23). The automated checks passed, and the product owner accepted F1 to F5 on 2026-10-23.
 **Parent:** [T1](T1.md)
 **Depends on:** F4
 **Decisions it waits on:** D4, D5, D7
