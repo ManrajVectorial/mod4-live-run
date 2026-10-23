@@ -48,6 +48,9 @@ class Settings(BaseSettings):
 
     # Conversation (D8, D9)
     conversation_context_messages: int | None = None
+    # History (F8). Required at startup. Off until brief Q3 (who may see a question) is
+    # answered for the deployment: the history routes have no authentication (FND-9).
+    history_enabled: bool | None = None
 
     # API
     max_question_chars: int | None = None

@@ -3,7 +3,9 @@
 **Date:** 2026-10-23
 **Scope:** everything on `work/build` (`fa1434d`) that is not on `main` (`b056bc6`, the start
 commit). That is 111 files. The corpus is excluded, since it was supplied and is protected.
-**Fixes made:** none. This is a review only. Every finding below is open.
+**Fixes made:** FND-1 and FND-9 (high), on the product owner's instruction "fix every high
+finding". FND-29 (high) is not fixed: it waits on a design decision. Every finding has a
+**Decision** line, and the full list is in "Decisions" at the end.
 **How to read it:** findings are numbered FND-1 onwards across the five passes. Each gives
 where it is, how serious it is (high, medium or low) and what I'd do. "Checked" means I ran it
 or read it in this review. "By reading" means I read the code but didn't reproduce the
@@ -128,6 +130,7 @@ of showing passages.** High.
   - Instead, return `degraded` with passages retrieved some other way, for example on the
     previous question joined to the follow-up (the original D9).
   - This changes D9 amendment 2's fallback, so it is your decision.
+- **Decision:** **Fixed** in this commit (product owner: fix every high finding). With the provider down, a follow-up is searched joined with the question before it, judged by the same rule and threshold, and returns `degraded` with passages, never "not covered" for that reason. An unusable reply still falls back to the question as asked. Evidence below, under "Fixes".
 
 **FND-2 — The £75 Edge criterion is only ever checked by reading the model's answer.**
 Medium.
@@ -139,6 +142,7 @@ Medium.
 - **What I'd do:** add an answer-content check for Q2 to the eval, for example that the
   answer says exactly £75 requires approval. Whether a phrase match is enough, or a reviewed
   judgement is needed, is for you to decide.
+- **Decision:** Deferred (accepted recommendation): today's live answer is correct; the content check needs a choice between a phrase match and a reviewed judgement, so it belongs to the next testing pass.
 
 **FND-3 — The model answers the rewritten question, which is never shown or stored.**
 Medium.
@@ -154,6 +158,7 @@ Medium.
 - **What I'd do:** store the search text and the rewrite prompt version with each assistant
   message, and consider showing "Searched for: …". Both change the agreed data model or the
   API, so they need your approval (rule 4).
+- **Decision:** Deferred (accepted recommendation): storing the search text and rewrite version changes the agreed data model, which needs approval (rule 4).
 
 **FND-4 — Citation anchors repeat across turns, so `[n]` can jump to the wrong answer's
 source.** Low.
@@ -163,6 +168,7 @@ source.** Low.
   page has two elements with `id="source-2"`, so the second answer's `[2]` jumps to the first
   answer's source. The ask page renders the same components.
 - **What I'd do:** prefix the id with the message ID.
+- **Decision:** Deferred (accepted recommendation): it only misdirects a scroll in multi-turn conversations; a one-line fix with the next frontend change.
 
 **FND-5 — The question-length message is off by one, and length is counted before
 trimming.** Low.
@@ -172,6 +178,7 @@ trimming.** Low.
     characters".
   - `len(question)` is taken before `strip()`, so surrounding spaces count towards the limit.
 - **What I'd do:** say "1000 characters or fewer", and measure after stripping.
+- **Decision:** Deferred (accepted recommendation): wording only, with no wrong answer or refusal; fix with the next API change.
 
 **FND-6 — A request body that isn't valid UTF-8 gets "Enter a question."** Low.
 - **Where:** `main.py:231-236`, pinned by `tests/test_api_ask.py:95`.
@@ -181,12 +188,14 @@ trimming.** Low.
   type a question.
 - **What I'd do:** use a distinct message. That changes the agreed API error, so it needs
   your approval.
+- **Decision:** Accepted (accepted recommendation): the 422 is the agreed contract, pinned by a test, and only a client sending non-UTF-8 sees it.
 
 **FND-7 — Superseded sources in history lose "replaced by vX".** Low.
 - **Where:** `backend/app/history.py`, `_source()`.
 - **Why:** the citation snapshot (PRD §6) has no `superseded_by`. This is already recorded in
   `T1-F8-history.md`.
 - **What I'd do:** add the column only if you approve a data-model change.
+- **Decision:** Accepted (accepted recommendation): U17 still holds ("Superseded" is shown), and the fuller label needs a data-model change.
 
 **FND-8 — The 5-message follow-up context can start with an answer whose question was
 dropped.** Low.
@@ -195,6 +204,14 @@ dropped.** Low.
   on, the oldest message the models see is an answer with no question.
 - **What I'd do:** count whole exchanges, or use an even number. Either changes D8, so it is
   your decision.
+- **Decision:** Accepted (accepted recommendation): D8 is a decided value, and the follow-up set passes 6/6 with it.
+
+**FND-37 — The refusal threshold is tuned on only 13 questions.** Raised and decided by the
+product owner on 2026-10-23; it isn't one of the 36 I found.
+- **Where:** `REFUSAL_THRESHOLD=0.5092` (D2), set at the midpoint of the gap in the 13-question
+  set. `T1-plan.md` already records that 4 of 26 rephrased variants land on the wrong side.
+- **Decision:** **Accepted by the product owner:** a known limitation. Doing better needs more
+  test questions.
 
 ## 2. Security and privacy
 
@@ -245,6 +262,7 @@ API or the web page.** High.
   recorded as blocked for release on it.
 - **What I'd do:** don't deploy with these routes reachable until Q3 is answered. If a deploy
   has to happen first, add a setting that switches the history routes off.
+- **Decision:** **Fixed** in this commit. A required `HISTORY_ENABLED` setting: when false, the history routes don't exist (404 `not_found`) and `/history` says history is switched off; questions are still recorded (REQ-C1). It is true only in the local `.env`; keep it false in any deployment until brief Q3 is answered. Authentication stays out of T1's scope. Evidence below, under "Fixes".
 
 **FND-10 — Question text and conversation context go to a third party, whose handling I
 haven't checked.** Medium.
@@ -252,11 +270,13 @@ haven't checked.** Medium.
 - **What I haven't checked:** the OpenRouter account's data-retention and training settings,
   and which upstream vendors it routes to.
 - **What I'd do:** confirm both and record them with brief Q3. This one isn't mine to decide.
+- **Decision:** Deferred (accepted recommendation): it belongs with brief Q3, which is owned outside the team; nothing is deployed yet.
 
 **FND-11 — Questions are kept forever, with no retention or deletion.** Medium.
 - **Where:** `db.py`. There is no delete path and no expiry.
 - **Why:** brief Q2 (retention) is open.
 - **What I'd do:** a retention decision from the owner of Q2, then a scheduled purge.
+- **Decision:** Deferred (accepted recommendation): retention is brief Q2, owned outside the team; nothing is deployed yet.
 
 **FND-12 — `/api/ask` has no rate limit or per-client cap.** Medium.
 - **Where:** `main.py:227`.
@@ -264,17 +284,20 @@ haven't checked.** Medium.
   An unauthenticated caller can run up cost, and the 40-thread pool can be exhausted.
 - **What I'd do:** a limit at the platform edge or in the proxy. A library for it would need
   your approval.
+- **Decision:** Deferred (accepted recommendation): to the deployment stage, where the platform's own limits can be used before any new library is considered.
 
 **FND-13 — The API publishes its docs.** Low.
 - **Where:** `main.py:141`, which uses FastAPI's defaults.
 - **Checked:** `/docs`, `/redoc` and `/openapi.json` all return 200.
 - **What I'd do:** turn them off outside development, through a setting.
+- **Decision:** Deferred (accepted recommendation): a deployment-stage setting; the docs show nothing a public repo doesn't already.
 
 **FND-14 — No security headers on the web page.** Low.
 - **Where:** `frontend/next.config.ts`.
 - **Checked:** `curl -I` on `/` shows no CSP, frame-ancestors or X-Frame-Options, nosniff or
   HSTS header.
 - **What I'd do:** add `headers()` to `next.config.ts`.
+- **Decision:** Deferred (accepted recommendation): set at the deployment stage, together with the frontend's start command (FND-23).
 
 **FND-15 — The repository is public, and history keeps three stray files.** Low.
 - **Where:** commit `6eb8b85`.
@@ -286,6 +309,7 @@ haven't checked.** Medium.
     corpus. None of it is a secret or a real user's question.
 - **What I'd do:** leave history as it is, since rewriting a pushed public branch is
   destructive. Keep staging explicit paths, as now.
+- **Decision:** Accepted (accepted recommendation): nothing sensitive is in those files, and rewriting a pushed public history is destructive.
 
 **FND-16 — Citations are checked for shape, not support.** Low.
 - **Where:** `citations.py:18-21`.
@@ -293,6 +317,7 @@ haven't checked.** Medium.
   the sentence. A question written to steer the model (prompt injection) could exploit that.
   The refusal rule still runs first, so it can't make an unsupported question answerable.
 - **What I'd do:** keep this as an open risk, and spot-check answers in the eval (see FND-2).
+- **Decision:** Accepted (accepted recommendation): an inherent residual risk; the refusal rule still runs first, and FND-2's content check will spot-check answers.
 
 ## 3. Maintainability
 
@@ -316,6 +341,7 @@ haven't checked.** Medium.
   - Create the request ID in the route and log it on every path.
   - Add the failing module and line from the traceback, without its local values, which can
     hold the question.
+- **Decision:** Deferred (accepted recommendation): diagnostics only, with no wrong output; fix before deployment, since NFR-5 applies there.
 
 **FND-18 — Small duplications.** Low.
 - **Where:**
@@ -327,6 +353,7 @@ haven't checked.** Medium.
     `frontend/app/history/page.tsx:85-94`);
   - the date formatters twice (`present.ts:90`, `history/page.tsx:13`).
 - **What I'd do:** one small shared helper for each.
+- **Decision:** Accepted (accepted recommendation): each copy is short and readable; merge them when that code is next touched.
 
 **FND-19 — Some values are typed into code instead of read from settings.** Low.
 - **Where:**
@@ -338,6 +365,7 @@ haven't checked.** Medium.
 - **Rule 5:** none is a model name or threshold. The `/key` path is part of a URL.
 - **What I'd do:** move them into named settings or constants. Whether the rewriter gets its
   own settings is your decision.
+- **Decision:** Accepted (accepted recommendation): none is a model name or threshold, and the rewriter's temperature 0 is deliberate and commented.
 
 **FND-20 — Some tests reach the network, so the warning count varies.** Low.
 - **Where:** constructing a `QdrantClient` checks the server version over the network
@@ -345,6 +373,7 @@ haven't checked.** Medium.
   `test_healthz.py` and `test_conversation.py`.
 - **Checked:** two runs gave 5 and 3 warnings: "Failed to obtain server version".
 - **What I'd do:** pass `check_compatibility=False` in tests, or inject the client.
+- **Decision:** Deferred (accepted recommendation): test hygiene; the network call only adds a warning and can't make a test pass falsely.
 
 **FND-21 — No type checker runs on the backend.** Low.
 - **Where:** `backend/requirements-dev.txt` and `.github/workflows/ci.yml`. The frontend
@@ -354,6 +383,7 @@ haven't checked.** Medium.
   said `app.rewrite` didn't exist). I haven't checked whether any are real.
 - **What I'd do:** add a type checker to CI. That is a new library, so it needs your
   approval.
+- **Decision:** Deferred (accepted recommendation): a type checker is a new library and needs approval (rule 4).
 
 **FND-22 — Builds aren't fully reproducible.** Low.
 - **Where:**
@@ -363,18 +393,21 @@ haven't checked.** Medium.
   - locally we run 3.12.1, while CI takes the latest 3.12.
 - **What I'd do:** a constraints file from `pip freeze`, which needs no new library, and a
   digest-pinned base image.
+- **Decision:** Deferred (accepted recommendation): to the deployment stage, when the image is first built for release.
 
 **FND-23 — `npm start` doesn't match `output: "standalone"`.** Low.
 - **Where:** `frontend/package.json:12` and `next.config.ts:5`.
 - **Checked:** Next prints `"next start" does not work with "output: standalone"`
   (`.web.log`), although it still serves.
 - **What I'd do:** settle the frontend's start command at the deployment stage.
+- **Decision:** Deferred (accepted recommendation): the frontend's deploy command is settled at the deployment stage.
 
 **FND-24 — T1.md is out of date.** Low.
 - **Where:** `tickets/T1.md:3` (still "todo"), lines 86-99 (the D0–D9 table is blank, while
   the decisions are in `T1-plan.md`) and line 101 (Evidence is empty).
 - **What I'd do:** fill in the decisions and the evidence links, and set its status once
   you accept this review.
+- **Decision:** Deferred (accepted recommendation): T1.md is updated at the verification stage, once the decisions on this review are final.
 
 ## 4. Licences and origin
 
@@ -511,12 +544,14 @@ package in brackets is from each package's published dependencies.
   and the CI check passes it, but nobody has decided on it explicitly.
 - **What I'd do:** record a decision that MPL-2.0 is acceptable. The obligation only applies
   if certifi's own files are modified.
+- **Decision:** Accepted (accepted recommendation): MPL-2.0 is not on rule 7's list, and we don't modify certifi, so its file-level terms never bite.
 
 **FND-26 — `caniuse-lite` is CC-BY-4.0, which requires attribution.** Low.
 - **Where:** a dependency of next.
 - **What I haven't checked:** whether any of its data ends up in the shipped bundle, or is
   only used at build time.
 - **What I'd do:** check, and add an attribution notice if it ships.
+- **Decision:** Deferred (accepted recommendation): check whether it ships in the bundle at the deployment stage, and add attribution if it does.
 
 **FND-27 — The CI licence check misses some of what runs.** Low.
 - **Where:** `ci/check_licences.py:39` runs `pip-licenses` without `--with-system`.
@@ -525,6 +560,7 @@ package in brackets is from each package's published dependencies.
     BSD-3-Clause and MIT.
   - The Docker images, which it never looks at.
 - **What I'd do:** add `--with-system`, and record the image licences in the plan.
+- **Decision:** Deferred (accepted recommendation): a small CI change; the missing packages were checked by hand in this review, all permissive.
 
 **FND-28 — The lockfile records the `sharp` stub at an odd path.** Low.
 - **Where:** `frontend/package-lock.json`, entry `node_modules/sharp`, whose `resolved` is
@@ -532,6 +568,7 @@ package in brackets is from each package's published dependencies.
 - **Checked:** a clean `npm ci` in a scratch copy still links `sharp` to `vendor/no-sharp`
   and installs the stub, so it is harmless.
 - **What I'd do:** nothing now. Recheck whenever npm is upgraded.
+- **Decision:** Accepted (accepted recommendation): harmless, verified with a clean `npm ci`.
 
 ## 5. Production readiness
 
@@ -567,6 +604,15 @@ dependency at a time and asking Q1. The shared containers were left running.
     its own rule.
 
   Each is a design decision for you.
+- **Decision:** **Not fixed: waiting for your decision.** Each fix is a design choice (rule 2), and I couldn't ask in-session. The options are under "FND-29 options" below. I recommend A, a second route to the same embedding model.
+
+**FND-29 options** (each keeps the refusal rule as it is unless it says otherwise):
+
+| | Option | What it takes | Trade-off |
+|---|---|---|---|
+| A (recommended) | If OpenRouter's embedding call fails, call the same model (`text-embedding-3-small`, 1,536 dimensions) directly at OpenAI | Two new settings (`EMBEDDING_FALLBACK_BASE_URL`, `EMBEDDING_FALLBACK_API_KEY`) and an OpenAI API key, a new provider account. No new library | Same vectors, so the same threshold applies. Covers an OpenRouter outage, not an OpenAI one. I can't verify it live without the key |
+| B | If embedding fails, rank passages by word overlap in plain Python and show them as `degraded` | A second refusal rule with its own threshold, tuned on the same 13 questions. ADR-001 changes | No new account, but an untested gate: parental-leave or crypto questions could show loosely matching passages instead of a refusal |
+| C | Return a clear "policy search is unavailable" message instead of the generic 500 | An agreed-API change (a 503 with its own code) | Honest, but T1's Error criterion still fails in a full outage, so FND-29 would be accepted rather than fixed |
 
 **FND-30 — When Qdrant is down, the person sees only "Something went wrong".** Medium.
 - **Where:** `ask.py:121` (retrieval isn't guarded) and `main.py:177-181`.
@@ -577,6 +623,7 @@ dependency at a time and asking Q1. The shared containers were left running.
   body.
 - **What I'd do:** catch retrieval failures and return a clear 503 with its own code. That
   changes the agreed API, so it needs your approval.
+- **Decision:** Deferred (accepted recommendation): a clearer 503 changes the agreed API (rule 4); `/healthz` already names the broken component.
 
 **FND-31 — When Postgres is down, the answer is generated, paid for, then thrown away.**
 Medium.
@@ -586,6 +633,7 @@ Medium.
 - **What I'd do:** check the store before calling the model, or return the answer and log
   that the record failed. REQ-C1 requires every call to be recorded, so you'd choose between
   them.
+- **Decision:** Deferred (accepted recommendation): either fix changes how REQ-C1 is met, so it needs your choice; it costs one wasted model call per request during a Postgres outage.
 
 **FND-32 — No overall deadline on a request.** Medium.
 - **Where:**
@@ -597,6 +645,7 @@ Medium.
   the proxy indefinitely. That is by reading; I didn't reproduce a hang.
 - **What I'd do:** add a `QDRANT_TIMEOUT_SECONDS` setting, and `AbortSignal.timeout` in the
   proxy, read from a setting.
+- **Decision:** Deferred (accepted recommendation): timeouts are set at the deployment stage, where the real latencies are measured (NFR-1).
 
 **FND-33 — The history list reads every message, every time.** Low.
 - **Where:** `history.py:27-38`.
@@ -604,6 +653,7 @@ Medium.
   whole history. That's fine at 230 questions, not at 1,400 staff.
 - **What I'd do:** aggregate in SQL, and add pagination. That is an API change, so it needs
   your approval.
+- **Decision:** Deferred (accepted recommendation): fine at today's volume, and pagination changes the agreed API.
 
 **FND-34 — Two asks into the same conversation at once can fail.** Low.
 - **Where:** `db.py:164-167`, which takes the next `seq` from `max(seq) + 1`.
@@ -611,6 +661,7 @@ Medium.
   that request gets a 500. The web page blocks double-submits, so it's unlikely. By reading,
   not reproduced.
 - **What I'd do:** lock the conversation row (`SELECT … FOR UPDATE`) while recording.
+- **Decision:** Accepted (accepted recommendation): the page blocks double-submits, so it needs two clients on one conversation at once.
 
 **FND-35 — A re-index isn't atomic.** Low.
 - **Where:** `vector_store.py:77-86`, which upserts, then deletes stale points.
@@ -618,6 +669,7 @@ Medium.
   failure part-way leaves the mix in place. REQ-I9's "nothing written" holds for embedding
   failures only. By reading, not reproduced.
 - **What I'd do:** ingest into a fresh collection and switch an alias over at the end.
+- **Decision:** Deferred (accepted recommendation): re-indexing is manual and rare (scheduled re-indexing is out of scope); fix before the first production re-index.
 
 **FND-36 — The rewrite call's cost isn't logged.** Low.
 - **Where:** `rewrite.py:76` returns only text, and `ask.py:231-240` logs the answer call's
@@ -625,6 +677,7 @@ Medium.
 - **Why it matters:** every follow-up makes an uncounted model call, so cost reporting (brief
   §9) is short.
 - **What I'd do:** return and log the rewrite's token counts.
+- **Decision:** Deferred (accepted recommendation): cost reporting only; add it with FND-17's logging change.
 
 **What I haven't checked in this pass:**
 - NFR-1 and NFR-2 latency on a deployed service, since nothing is deployed.
@@ -633,17 +686,145 @@ Medium.
 - Behaviour under concurrent load.
 - Postgres or Qdrant failing mid-request rather than at connect.
 
-## Summary
+## Fixes (2026-10-23)
 
-| Severity | Findings |
-|---|---|
-| High | FND-1 (a follow-up is refused when the model is down), FND-9 (history open to anyone, brief Q3), FND-29 (provider outage: no passages) |
-| Medium | FND-2, FND-3, FND-10, FND-11, FND-12, FND-17, FND-30, FND-31, FND-32 |
-| Low | FND-4 to FND-8, FND-13 to FND-16, FND-18 to FND-28, FND-33 to FND-36 |
+**FND-1, the follow-up asked while the model is down:**
+- **Changes:**
+  - `RewriteFailed` now carries `provider` (`"timeout"`, `"error"` or `None`), in
+    `app/rewrite.py`.
+  - In `app/ask.py`, a provider failure searches the follow-up joined with the previous
+    question (the original D9) under the same rule and threshold. If that clears, it returns
+    `degraded` (`provider_timeout` or `provider_error`) with passages, without calling the
+    model again.
+  - An unusable reply still searches as asked, as before.
+- **Tests first:**
+  - In `test_rewriter.py`: provider timeout and error told apart from an unusable reply.
+  - In `test_conversation.py`: model down on a follow-up gives passages, not a refusal (both
+    reasons), and the joined follow-up is still judged by the rule.
+  - Shown failing: `4 failed, 16 passed`, with `TypeError: RewriteFailed() takes no keyword
+    arguments`. After the code: `20 passed`.
+- **Live, with `GENERATION_TIMEOUT_SECONDS=0.01` and a real London question first:**
 
-**Decisions this review needs from you:**
-- the D9 fallback (FND-1);
-- D0's outage plan (FND-29);
-- brief Q2 and Q3 (FND-9, FND-10, FND-11);
-- the API and data-model changes in FND-3, FND-6, FND-7, FND-30, FND-31 and FND-33;
-- any new library, for FND-12, FND-21, or a Python vulnerability audit.
+  ```
+  FND-1 model down, follow-up 'And for Singapore?': degraded {'reason': 'provider_timeout'} top 0.7471 sources [('travel-expense-policy-v3.1', '6.2'), ('travel-expense-policy-v3.0', '6.1')]
+  FND-1 model down, follow-up 'How many days of paid parental leave am I entitled to?': refused None top 0.3312 sources []
+    log: ask request_id=3083fbc37967 rewrite failed (RewriteFailed: APITimeoutError); model down; searching joined with the previous question
+  ```
+
+  Before the fix, the same Singapore follow-up came back `refused` at 0.3447.
+- **Residual risk:** with the model down, an off-topic follow-up joined with an on-topic
+  question can clear the rule and show the earlier topic's passages, as `degraded`, never as
+  an answer. That is the joined-search weakness D9 measured at F6, now confined to outages.
+
+**FND-9, history open to anyone:**
+- **Changes:**
+  - A `HISTORY_ENABLED` setting, required at startup with no default in code (settings, and
+    `create_app`'s required list).
+  - The history routes are registered only when it is true.
+  - `/history` shows "History is switched off on this service…" when the API answers the
+    routes' absence with `not_found` (`lib/present.ts` `historyNotFound`; `lib/corpus.ts`
+    passes the error code through).
+  - `.env.example` documents it. It is `true` only in my local `.env`.
+- **Not in PRD §8:** the setting isn't in PRD §8's list, which is locked, so the setting list
+  there is now one short. I haven't changed the PRD (rule 1).
+- **Tests first:**
+  - Backend, in `test_api_conversations.py`: switched off, no stored question is exposed and
+    every exchange is still recorded; the API won't start without the setting. Shown
+    failing: `2 failed, 6 passed` (`assert 200 == 404`, and `DID NOT RAISE SettingsError`).
+    After the code: `8 passed`.
+  - Frontend, in `present.test.ts`: switched off says so. Shown failing: `does not provide
+    an export named 'historyNotFound'`. After the code: 13/13.
+- **Live:**
+
+  ```
+  FND-9 HISTORY_ENABLED=false: 404 not_found | 404 not_found
+  FND-9 HISTORY_ENABLED=true (local .env): 200
+  ```
+
+**After both fixes, the whole suite:**
+
+```
+$ cd backend && ruff check . && ruff format --check . && bandit -q -r app && python -m pytest -q
+All checks passed!  62 files already formatted  (bandit: no findings)
+129 passed, 3 warnings in 8.94s
+$ python -m pytest -q -p no:cacheprovider ci/tests
+41 passed in 13.11s
+$ python ci/check_scope.py --base plan-approved
+Scope check passed: no protected file has changed since refs/tags/plan-approved.
+$ python ci/check_licences.py --node-modules frontend/node_modules
+Checked 77 packages.  Licence check passed: no copyleft or unknown licences.
+$ cd frontend && npm run typecheck && npm test && npm run build
+typecheck ok · ℹ tests 13  ℹ pass 13  ℹ fail 0 · ✓ Compiled successfully (/history built)
+```
+
+The 13 questions and the follow-up set, against the restarted API on 8014:
+
+```
+$ cd backend && python -m app.eval
+Q1 answered 0.723 · Q2 answered 0.733 · Q3 answered 0.582 · Q4 answered 0.666 · Q5 answered 0.557
+Q6 answered 0.611 · Q7 answered 0.606 · Q8 answered 0.712 · Q9 answered 0.618 · Q10 answered 0.570
+Q11 refused 0.438 · Q12 refused 0.462 · Q13 refused 0.275
+eval 10/10 answered, 3/3 refused
+$ cd backend && python -m app.followup_eval
+C1 answered 0.7182 · C2 answered 0.6657 · C3 answered 0.5374 · C4 refused 0.4690 · C5 refused 0.2750 · C6 refused 0.4825
+followups 6/6 passed
+```
+
+## Decisions
+
+**Findings per pass:**
+
+| Pass | Findings | Count |
+|---|---|---|
+| 1. Correctness | FND-1 to FND-8, plus FND-37 (raised by the product owner) | 9 |
+| 2. Security and privacy | FND-9 to FND-16 | 8 |
+| 3. Maintainability | FND-17 to FND-24 | 8 |
+| 4. Licences and origin | FND-25 to FND-28 | 4 |
+| 5. Production readiness | FND-29 to FND-36 | 8 |
+| **Total** | | **37** |
+
+**Outcome:**
+- 2 fixed (FND-1, FND-9).
+- 1 waiting for your decision (FND-29).
+- 1 accepted by the product owner (FND-37).
+- 33 decided as accepted recommendations: 10 accepted, 23 deferred.
+
+| Finding | Pass | Severity | Decision | Reason |
+|---|---|---|---|---|
+| FND-1 | 1. Correctness | High | Fixed | Fixed in this commit; evidence under "Fixes" |
+| FND-2 | 1. Correctness | Medium | Deferred (accepted recommendation) | today's live answer is correct; the content check needs a choice between a phrase match and a reviewed judgement, so it belongs to the next testing pass |
+| FND-3 | 1. Correctness | Medium | Deferred (accepted recommendation) | storing the search text and rewrite version changes the agreed data model, which needs approval (rule 4) |
+| FND-4 | 1. Correctness | Low | Deferred (accepted recommendation) | it only misdirects a scroll in multi-turn conversations; a one-line fix with the next frontend change |
+| FND-5 | 1. Correctness | Low | Deferred (accepted recommendation) | wording only, with no wrong answer or refusal; fix with the next API change |
+| FND-6 | 1. Correctness | Low | Accepted (accepted recommendation) | the 422 is the agreed contract, pinned by a test, and only a client sending non-UTF-8 sees it |
+| FND-7 | 1. Correctness | Low | Accepted (accepted recommendation) | U17 still holds ("Superseded" is shown), and the fuller label needs a data-model change |
+| FND-8 | 1. Correctness | Low | Accepted (accepted recommendation) | D8 is a decided value, and the follow-up set passes 6/6 with it |
+| FND-9 | 2. Security and privacy | High | Fixed | Fixed in this commit; evidence under "Fixes" |
+| FND-10 | 2. Security and privacy | Medium | Deferred (accepted recommendation) | it belongs with brief Q3, which is owned outside the team; nothing is deployed yet |
+| FND-11 | 2. Security and privacy | Medium | Deferred (accepted recommendation) | retention is brief Q2, owned outside the team; nothing is deployed yet |
+| FND-12 | 2. Security and privacy | Medium | Deferred (accepted recommendation) | to the deployment stage, where the platform's own limits can be used before any new library is considered |
+| FND-13 | 2. Security and privacy | Low | Deferred (accepted recommendation) | a deployment-stage setting; the docs show nothing a public repo doesn't already |
+| FND-14 | 2. Security and privacy | Low | Deferred (accepted recommendation) | set at the deployment stage, together with the frontend's start command (FND-23) |
+| FND-15 | 2. Security and privacy | Low | Accepted (accepted recommendation) | nothing sensitive is in those files, and rewriting a pushed public history is destructive |
+| FND-16 | 2. Security and privacy | Low | Accepted (accepted recommendation) | an inherent residual risk; the refusal rule still runs first, and FND-2's content check will spot-check answers |
+| FND-17 | 3. Maintainability | Medium | Deferred (accepted recommendation) | diagnostics only, with no wrong output; fix before deployment, since NFR-5 applies there |
+| FND-18 | 3. Maintainability | Low | Accepted (accepted recommendation) | each copy is short and readable; merge them when that code is next touched |
+| FND-19 | 3. Maintainability | Low | Accepted (accepted recommendation) | none is a model name or threshold, and the rewriter's temperature 0 is deliberate and commented |
+| FND-20 | 3. Maintainability | Low | Deferred (accepted recommendation) | test hygiene; the network call only adds a warning and can't make a test pass falsely |
+| FND-21 | 3. Maintainability | Low | Deferred (accepted recommendation) | a type checker is a new library and needs approval (rule 4) |
+| FND-22 | 3. Maintainability | Low | Deferred (accepted recommendation) | to the deployment stage, when the image is first built for release |
+| FND-23 | 3. Maintainability | Low | Deferred (accepted recommendation) | the frontend's deploy command is settled at the deployment stage |
+| FND-24 | 3. Maintainability | Low | Deferred (accepted recommendation) | T1.md is updated at the verification stage, once the decisions on this review are final |
+| FND-25 | 4. Licences and origin | Low | Accepted (accepted recommendation) | MPL-2.0 is not on rule 7's list, and we don't modify certifi, so its file-level terms never bite |
+| FND-26 | 4. Licences and origin | Low | Deferred (accepted recommendation) | check whether it ships in the bundle at the deployment stage, and add attribution if it does |
+| FND-27 | 4. Licences and origin | Low | Deferred (accepted recommendation) | a small CI change; the missing packages were checked by hand in this review, all permissive |
+| FND-28 | 4. Licences and origin | Low | Accepted (accepted recommendation) | harmless, verified with a clean `npm ci` |
+| FND-29 | 5. Production readiness | High | Waiting for product owner | Every fix is a design choice (rule 2); options A, B or C, A recommended |
+| FND-30 | 5. Production readiness | Medium | Deferred (accepted recommendation) | a clearer 503 changes the agreed API (rule 4); `/healthz` already names the broken component |
+| FND-31 | 5. Production readiness | Medium | Deferred (accepted recommendation) | either fix changes how REQ-C1 is met, so it needs your choice; it costs one wasted model call per request during a Postgres outage |
+| FND-32 | 5. Production readiness | Medium | Deferred (accepted recommendation) | timeouts are set at the deployment stage, where the real latencies are measured (NFR-1) |
+| FND-33 | 5. Production readiness | Low | Deferred (accepted recommendation) | fine at today's volume, and pagination changes the agreed API |
+| FND-34 | 5. Production readiness | Low | Accepted (accepted recommendation) | the page blocks double-submits, so it needs two clients on one conversation at once |
+| FND-35 | 5. Production readiness | Low | Deferred (accepted recommendation) | re-indexing is manual and rare (scheduled re-indexing is out of scope); fix before the first production re-index |
+| FND-36 | 5. Production readiness | Low | Deferred (accepted recommendation) | cost reporting only; add it with FND-17's logging change |
+| FND-37 | 1. Correctness | (not rated) | Accepted (product owner) | Known limitation: doing better needs more test questions |

@@ -206,3 +206,16 @@ The frontend has 11 tests (a new one for the conversation state); the typecheck 
 - The stored question is the one the person typed.
 - `FOLLOWUP_QUERY_QUESTIONS`, the old joined-search setting, is removed.
 - The page shows the conversation turn by turn, and Reset reloads it.
+
+## Change after review (2026-10-23, T1-review FND-1)
+
+- **The failed-rewrite fallback is narrowed.** "Search as asked" was my simplest-option choice
+  above.
+- **When the rewrite fails at the provider** (a timeout or an error, so the model is down):
+  - the follow-up is searched joined with the previous question, judged by the same rule and
+    threshold;
+  - if it clears, the response is `degraded` with the passages, without calling the model
+    again (T1 Error criterion).
+- **When the reply is unusable** (not a question, empty or too long), it still searches as
+  asked.
+- **Evidence:** in `T1-review.md`, under "Fixes". The follow-up set is still 6/6.

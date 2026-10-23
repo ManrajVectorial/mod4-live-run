@@ -155,6 +155,33 @@ def test_rewrite_failure_falls_back_to_the_question_as_asked(make_settings, capl
     assert "RewriteFailed" in caplog.text
 
 
+def test_model_down_on_a_follow_up_shows_passages_not_a_refusal(make_settings):
+    """FND-1 and T1's Error criterion: with the model down, a follow-up is searched joined
+    with the question before it and comes back degraded with passages, never 'not covered'
+    just because the bare follow-up finds nothing."""
+    for provider, reason in (("timeout", "provider_timeout"), ("error", "provider_error")):
+        down = FakeRewriter(error=RewriteFailed("APITimeoutError", provider=provider))
+        client, retriever, generator, _ = setup(make_settings, rewriter=down)
+        first = ask(client, "What is the accommodation cap for London?").json()
+        response = ask(client, "And for Singapore?", first["conversation_id"]).json()
+        assert response["status"] == "degraded"
+        assert response["degraded"] == {"reason": reason}
+        assert response["sources"], "the passages are shown"
+        assert retriever.texts[-1] == (
+            "What is the accommodation cap for London? And for Singapore?"
+        )
+        assert len(generator.calls) == 1  # the model just failed: no second attempt
+
+
+def test_model_down_joined_follow_up_is_still_judged_by_the_rule(make_settings):
+    down = FakeRewriter(error=RewriteFailed("APIConnectionError", provider="error"))
+    client, _, generator, _ = setup(make_settings, rewriter=down)
+    first = ask(client, "What is the approval threshold?").json()
+    response = ask(client, "Can I expense my partner's flight?", first["conversation_id"]).json()
+    assert response["status"] == "refused" and response["sources"] == []
+    assert len(generator.calls) == 1
+
+
 def test_no_rewrite_when_generation_is_switched_off(make_settings):
     client, retriever, _, rewriter = setup(make_settings, generation_enabled=False)
     first = ask(client, "What is the approval threshold?").json()

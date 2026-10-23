@@ -137,3 +137,15 @@ exactly repeatable even at temperature 0, so the rewritten wording, and with it 
 shift between runs. No case changed side of the threshold.
 
 `[F8 history] tests 123/123 + 12/12 ok | ruff ok | eval 10/10 answered, 3/3 refused | followups 6/6 | next push`
+
+## Change after review (2026-10-23, T1-review FND-9)
+
+- **History now has a switch.** `HISTORY_ENABLED` is required at startup.
+- **When it's false:**
+  - `/api/conversations` and `/api/conversations/{id}` don't exist (404 `not_found`);
+  - `/history` says history is switched off;
+  - every exchange is still recorded.
+- **Where it's on:** only in the local `.env`. Keep it false in any deployment until brief Q3
+  is answered.
+- **The PRD:** the setting isn't in PRD §8 (locked).
+- **Evidence:** in `T1-review.md`, under "Fixes".

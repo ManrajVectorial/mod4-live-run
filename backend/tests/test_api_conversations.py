@@ -2,8 +2,18 @@
 
 import uuid
 
+import pytest
+
 from app.generation import GenerationResult
-from tests.api_support import ANSWERABLE, UNANSWERABLE, StubRetriever, make_client, passage
+from app.settings import SettingsError
+from tests.api_support import (
+    ANSWERABLE,
+    UNANSWERABLE,
+    StubRetriever,
+    make_client,
+    memory_store,
+    passage,
+)
 
 
 class Generator:
@@ -131,3 +141,25 @@ def test_unknown_conversation_is_404(make_settings):
         response = client.get(f"/api/conversations/{raw}")
         assert response.status_code == 404
         assert response.json()["error"]["code"] == "conversation_not_found"
+
+
+def test_history_switched_off_exposes_no_stored_question(make_settings):
+    """FND-9: with HISTORY_ENABLED=false the history routes don't exist (404 not_found),
+    while asking still works and every exchange is still recorded (REQ-C1)."""
+    store = memory_store()
+    client, _ = make_client(
+        make_settings, ANSWERABLE, store=store, generator=Generator(), history_enabled=False
+    )
+    answered = ask(client, "What is the approval threshold?")
+    assert answered["status"] == "answered"
+    for path in ("/api/conversations", f"/api/conversations/{answered['conversation_id']}"):
+        response = client.get(path)
+        assert response.status_code == 404, path
+        assert response.json()["error"]["code"] == "not_found", path
+        assert "approval threshold" not in response.text
+    assert store.conversation_exists(uuid.UUID(answered["conversation_id"]))
+
+
+def test_api_will_not_start_without_the_history_setting(make_settings):
+    with pytest.raises(SettingsError, match="HISTORY_ENABLED"):
+        make_client(make_settings, ANSWERABLE, history_enabled=None)

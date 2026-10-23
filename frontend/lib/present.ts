@@ -218,6 +218,15 @@ export function historyResponse(
   };
 }
 
+// FND-9: with HISTORY_ENABLED=false the API has no history routes, so it answers a plain
+// not_found. A missing conversation, with history on, is conversation_not_found.
+export const HISTORY_OFF =
+  "History is switched off on this service: who may see past questions hasn't been decided yet.";
+
+export function historyNotFound(code: string | null): string {
+  return code === "conversation_not_found" ? "That conversation doesn't exist." : HISTORY_OFF;
+}
+
 // The history page pairs each question with the answer that followed it.
 export function historyTurns(detail: ConversationDetail): Turn[] {
   const turns: Turn[] = [];

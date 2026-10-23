@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+import httpx2
+import openai
 import pytest
 
 from app.rewrite import OpenRouterRewriter, RewriteFailed
@@ -70,6 +72,34 @@ def test_a_reply_that_is_not_a_question_fails():
     r, _ = rewriter("I don't have the earlier conversation, so I can't tell what that refers to.")
     with pytest.raises(RewriteFailed, match="not a question"):
         r.rewrite("And that amount?", HISTORY)
+
+
+def failing_rewriter(error):
+    r, _ = rewriter("unused")
+
+    def create(**kw):
+        raise error
+
+    r.client.chat.completions.create = create
+    return r
+
+
+def test_provider_timeout_and_error_are_told_apart_from_an_unusable_reply():
+    """FND-1: a provider failure means the model is down, not that the reply was bad."""
+    request = httpx2.Request("POST", "http://127.0.0.1:1/chat/completions")
+    with pytest.raises(RewriteFailed) as timeout:
+        failing_rewriter(openai.APITimeoutError(request=request)).rewrite("q", HISTORY)
+    assert timeout.value.provider == "timeout"
+    with pytest.raises(RewriteFailed) as error:
+        failing_rewriter(openai.APIConnectionError(request=request)).rewrite("q", HISTORY)
+    assert error.value.provider == "error"
+
+
+def test_an_unusable_reply_is_not_a_provider_failure():
+    r, _ = rewriter("That is not a question.")
+    with pytest.raises(RewriteFailed) as failed:
+        r.rewrite("And that amount?", HISTORY)
+    assert failed.value.provider is None
 
 
 @pytest.mark.parametrize(

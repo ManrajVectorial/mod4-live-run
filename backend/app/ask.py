@@ -108,15 +108,31 @@ def handle_ask(
     # conversation is never rewritten, and with generation switched off nothing is.
     context = context_for(store, conversation_id, config.context_messages)
     search_text = question
+    model_down: str | None = None  # a degraded reason, when the rewrite found the model down
     if context and rewriter is not None and config.generation_enabled:
         try:
             search_text = rewriter.rewrite(question, context)
         except RewriteFailed as exc:
+            if exc.provider is None:
+                # An unusable reply (not a question, empty, too long): search as asked.
+                fallback = "searching as asked"
+            else:
+                # FND-1: the model is down. The bare follow-up ("And for Singapore?") would
+                # find nothing and be refused as "not covered". Search it joined with the
+                # question before it instead (the original D9), judged by the same rule,
+                # and show passages: no answer can be composed (T1 Error criterion).
+                model_down = "provider_timeout" if exc.provider == "timeout" else "provider_error"
+                previous = next(
+                    (m["content"] for m in reversed(context) if m["role"] == "user"), ""
+                )
+                search_text = f"{previous} {question}".strip()
+                fallback = "model down; searching joined with the previous question"
             log.warning(
-                "ask request_id=%s rewrite failed (%s: %s); searching as asked",
+                "ask request_id=%s rewrite failed (%s: %s); %s",
                 request_id,
                 type(exc).__name__,
                 exc,  # our own message: never question text
+                fallback,
             )
     retrieval = retriever.retrieve(search_text)
     top = retrieval.top_current_score
@@ -143,6 +159,10 @@ def handle_ask(
         if generator is None or not config.generation_enabled:
             status, sources = "degraded", all_sources()
             degraded = Degraded(reason="generation_disabled")
+        elif model_down is not None:
+            # The rewrite call just failed at the provider: don't wait on it a second time.
+            status, sources = "degraded", all_sources()
+            degraded = Degraded(reason=model_down)
         else:
             try:
                 result = generator.generate(search_text, cleared, note, context or None)

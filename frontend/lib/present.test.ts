@@ -14,6 +14,7 @@ import {
   documentBanner,
   sectionAnchor,
   degradedMessage,
+  historyNotFound,
   historyTurns,
   indexedLabel,
   splitSources,
@@ -170,4 +171,10 @@ test("a degraded result says no answer was composed, for every reason (U5)", () 
   ] as const) {
     assert.match(degradedMessage(reason), /No answer was composed/);
   }
+});
+
+test("history switched off says so, rather than 'doesn't exist' (FND-9)", () => {
+  // Off, the API has no history routes: a plain not_found. On, a missing one is conversation_not_found.
+  assert.match(historyNotFound("not_found"), /switched off/);
+  assert.equal(historyNotFound("conversation_not_found"), "That conversation doesn't exist.");
 });

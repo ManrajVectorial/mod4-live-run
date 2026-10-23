@@ -128,7 +128,11 @@ def create_app(
     configure_logging(cfg.log_level)
     # REQ-R7: no threshold, no API. Checked at startup, not on the first question.
     required = require(
-        cfg, "refusal_threshold", "max_question_chars", "conversation_context_messages"
+        cfg,
+        "refusal_threshold",
+        "max_question_chars",
+        "conversation_context_messages",
+        "history_enabled",
     )
     ask_config = AskConfig(
         threshold=required["refusal_threshold"],
@@ -209,20 +213,24 @@ def create_app(
         except DocumentNotFound as exc:
             raise ApiError(404, "document_not_found", "That document isn't in the corpus.") from exc
 
-    @app.get("/api/conversations")
-    async def conversations_list() -> dict[str, object]:
-        store = get_services().store
-        return {"conversations": await run_in_threadpool(list_conversations, store)}
+    if required["history_enabled"]:
+        # FND-9: these return every stored question to anyone who can reach the API, so
+        # they exist only when HISTORY_ENABLED is true. Off, they are a plain 404 not_found.
 
-    @app.get("/api/conversations/{conversation_id}")
-    async def conversation(conversation_id: str) -> dict[str, object]:
-        store = get_services().store
-        try:
-            return await run_in_threadpool(conversation_detail, store, conversation_id)
-        except HistoryNotFound as exc:
-            raise ApiError(
-                404, "conversation_not_found", "That conversation doesn't exist."
-            ) from exc
+        @app.get("/api/conversations")
+        async def conversations_list() -> dict[str, object]:
+            store = get_services().store
+            return {"conversations": await run_in_threadpool(list_conversations, store)}
+
+        @app.get("/api/conversations/{conversation_id}")
+        async def conversation(conversation_id: str) -> dict[str, object]:
+            store = get_services().store
+            try:
+                return await run_in_threadpool(conversation_detail, store, conversation_id)
+            except HistoryNotFound as exc:
+                raise ApiError(
+                    404, "conversation_not_found", "That conversation doesn't exist."
+                ) from exc
 
     @app.post("/api/ask", response_model=AskResponse)
     async def ask(request: Request) -> AskResponse:

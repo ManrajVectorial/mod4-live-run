@@ -5,7 +5,7 @@ the conversation so far. It only rewrites; it never answers, and it decides noth
 rewritten question is searched and judged by the same refusal rule and threshold as any other.
 """
 
-from typing import Protocol
+from typing import Literal, Protocol
 
 import openai
 from openai import OpenAI
@@ -14,7 +14,16 @@ from app.openrouter import HEADERS
 
 
 class RewriteFailed(Exception):
-    """No usable rewrite. The caller searches on the question as asked."""
+    """No usable rewrite.
+
+    `provider` says why: "timeout" or "error" when the model provider failed (the model is
+    down, so no answer can be composed either), or None when the model replied with
+    something unusable. The caller decides what to search on (FND-1).
+    """
+
+    def __init__(self, message: str, provider: Literal["timeout", "error"] | None = None):
+        super().__init__(message)
+        self.provider = provider
 
 
 class Rewriter(Protocol):
@@ -61,8 +70,10 @@ class OpenRouterRewriter:
                 max_tokens=self.max_tokens,
                 extra_body=extra_body,
             )
+        except openai.APITimeoutError as exc:  # before OpenAIError: it is a subclass
+            raise RewriteFailed(type(exc).__name__, provider="timeout") from exc
         except openai.OpenAIError as exc:
-            raise RewriteFailed(type(exc).__name__) from exc
+            raise RewriteFailed(type(exc).__name__, provider="error") from exc
         choice = response.choices[0] if response.choices else None
         if choice is None or choice.finish_reason == "length":
             raise RewriteFailed("no complete rewrite")
