@@ -1,36 +1,46 @@
 import Link from "next/link";
 
-import { citationLabel, corpusHref, supersededLabel, type Source } from "@/lib/present";
+import { Icon } from "@/components/Icon";
+import type { CitationCard } from "@/lib/present";
 
-// One citation: document, section and version always visible (U16); the passage text
-// expands in place (U3); superseded text is always labelled (U17).
-export function Citation({ source }: { source: Source }) {
-  const superseded = supersededLabel(source);
+// One citation as a card: document, section and version always visible (U16), a badge on
+// superseded sources (U17), the passage expandable in place (U3) and a link to its
+// section in the document (B4).
+export function Card({ card, open = false }: { card: CitationCard; open?: boolean }) {
   return (
-    <li id={`source-${source.marker}`} className={superseded ? "citation citation--superseded" : "citation"}>
-      <details>
-        <summary>
-          <span className="citation__marker">[{source.marker}]</span>{" "}
-          <span className="citation__label">{citationLabel(source)}</span>
-          {superseded && <span className="badge badge--superseded">{superseded}</span>}
-        </summary>
-        <pre className="citation__text">{source.text}</pre>
-        <Link href={corpusHref(source)} className="citation__open">
-          Open this section in the document
-        </Link>
+    <li id={card.anchorId} className={card.badge ? "card card--superseded" : "card"}>
+      <div className="card__head">
+        <span className="card__marker" aria-label={`Source ${card.marker}`}>
+          {card.marker}
+        </span>
+        <div className="card__body">
+          <span className="card__document">{card.document}</span>
+          <span className="card__meta">
+            <span>{card.section}</span>
+            <span className="chip">{card.version}</span>
+            {card.badge && <span className="badge badge--superseded">{card.badge}</span>}
+          </span>
+        </div>
+      </div>
+      <details open={open}>
+        <summary>Show the passage</summary>
+        <pre className="passage">{card.text}</pre>
       </details>
+      <Link href={card.href} className="card__link">
+        Open {card.section.split(" ")[0]} in the document <Icon name="arrow" />
+      </Link>
     </li>
   );
 }
 
-export function CitationList({ title, sources }: { title: string; sources: Source[] }) {
-  if (sources.length === 0) return null;
+export function CardList({ title, cards }: { title: string; cards: CitationCard[] }) {
+  if (cards.length === 0) return null;
   return (
-    <section className="citations" aria-label={title}>
-      <h2 className="citations__title">{title}</h2>
-      <ol className="citations__list">
-        {sources.map((source) => (
-          <Citation key={source.passage_id} source={source} />
+    <section aria-label={title}>
+      <h3 className="section-title">{title}</h3>
+      <ol className="cards">
+        {cards.map((card) => (
+          <Card key={card.passageId} card={card} />
         ))}
       </ol>
     </section>

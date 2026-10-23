@@ -237,3 +237,145 @@ export function historyTurns(detail: ConversationDetail): Turn[] {
   }
   return turns;
 }
+
+// F9: how each kind of result looks. Pure, so tested without a browser (lib/views.test.ts).
+
+export type Look = "answer" | "conflict" | "refusal" | "passages" | "error";
+export type IconName = "check" | "scales" | "stop" | "document" | "alert";
+
+// Each kind has its own colour (the CSS modifier is the key), icon and heading, so none can
+// be mistaken for another (U4, U5, U12).
+export const RESULT_LOOKS: Record<Look, { icon: IconName; heading: string }> = {
+  answer: { icon: "check", heading: "What the policy says" },
+  conflict: { icon: "scales", heading: "What the policies say" },
+  refusal: { icon: "stop", heading: "Not covered by the policy documents" },
+  passages: { icon: "document", heading: "No answer was composed" },
+  error: { icon: "alert", heading: "Something went wrong" },
+};
+
+// The first words of the D6 notice in backend/app/text/conflict.md. A test reads the
+// template, so a wording change there fails the tests instead of breaking the layout.
+export const CONFLICT_LEAD = "These two current policies conflict:";
+
+export function resultLook(response: AskResponse): Exclude<Look, "error"> {
+  if (response.status === "refused") return "refusal";
+  if (response.status === "degraded") return "passages";
+  return conflictView(response) ? "conflict" : "answer";
+}
+
+export type CitationCard = {
+  anchorId: string;
+  marker: number;
+  document: string;
+  section: string;
+  version: string;
+  href: string;
+  badge: string | null;
+  text: string;
+  passageId: string;
+};
+
+// Anchors carry the message ID, so [n] in one answer never jumps to another's card (FND-4).
+export function markerHref(messageId: string, marker: number): string {
+  return `#${citationAnchor(messageId, marker)}`;
+}
+
+function citationAnchor(messageId: string, marker: number): string {
+  return `source-${messageId}-${marker}`;
+}
+
+// U16 on every card: document, section number and title, and version. B4: the link.
+export function citationCards(messageId: string, sources: Source[]): CitationCard[] {
+  return [...sources]
+    .sort((a, b) => a.marker - b.marker)
+    .map((s) => ({
+      anchorId: citationAnchor(messageId, s.marker),
+      marker: s.marker,
+      document: s.title,
+      section: `§${s.section} ${s.section_title}`,
+      version: `v${s.version}`,
+      href: corpusHref(s),
+      badge: supersededLabel(s),
+      text: s.text,
+      passageId: s.passage_id,
+    }));
+}
+
+export type WhoToAsk = { topic: string; team: string };
+
+// D5: the refusal text ends "Who to ask: expenses → Group Finance; …". It is split into a
+// list for display; any other shape is shown whole.
+export function refusalView(response: AskResponse): {
+  heading: string;
+  message: string;
+  whoToAsk: WhoToAsk[];
+  cards: CitationCard[];
+} {
+  const text = response.refusal?.message ?? "";
+  const [before, after] = text.split(/\s*Who to ask:\s*/);
+  const whoToAsk =
+    after === undefined
+      ? []
+      : after
+          .replace(/\.\s*$/, "")
+          .split(";")
+          .map((part) => part.split("→").map((x) => x.trim()))
+          .filter((pair) => pair.length === 2 && pair[0] && pair[1])
+          .map(([topic, team]) => ({ topic, team }));
+  return {
+    heading: RESULT_LOOKS.refusal.heading,
+    message: whoToAsk.length ? before.trim() : text,
+    whoToAsk,
+    cards: [], // a refusal cites no policy (D5)
+  };
+}
+
+export function degradedView(response: AskResponse): {
+  heading: string;
+  message: string;
+  cards: CitationCard[];
+  earlier: CitationCard[];
+} {
+  const { cited, earlier } = splitSources(response.sources);
+  return {
+    heading: RESULT_LOOKS.passages.heading,
+    message: degradedMessage(response.degraded?.reason ?? "provider_error"),
+    cards: citationCards(response.message_id, cited),
+    earlier: citationCards(response.message_id, earlier),
+  };
+}
+
+// U12: never a blank result; always something to try.
+export function errorView(message: string): { heading: string; message: string; tryThis: string[] } {
+  return {
+    heading: RESULT_LOOKS.error.heading,
+    message,
+    tryThis: [
+      "Ask the question again in a moment.",
+      "If it keeps failing, the policy documents are still on the Corpus page.",
+    ],
+  };
+}
+
+// D6: the API appends the conflict notice to the answer. Split it off and set the two
+// policies it names side by side.
+export function conflictView(response: AskResponse): {
+  body: string;
+  heading: string;
+  notice: string;
+  escalate: string;
+  sides: CitationCard[];
+} | null {
+  if (response.status !== "answered" || !response.answer) return null;
+  const at = response.answer.indexOf(CONFLICT_LEAD);
+  if (at === -1) return null;
+  const notice = response.answer.slice(at).trim();
+  const markers = [...notice.matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1]));
+  const cards = citationCards(response.message_id, response.sources);
+  const sides = markers
+    .map((n) => cards.find((c) => c.marker === n))
+    .filter((c): c is CitationCard => c !== undefined);
+  if (sides.length < 2) return null;
+  const escalate = notice.match(/Escalate to [^.]*\./)?.[0] ?? "";
+  return { body: response.answer.slice(0, at).trim(), heading: "These policies conflict", notice, escalate, sides };
+}
