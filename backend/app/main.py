@@ -26,6 +26,7 @@ from app.db import Store
 from app.embeddings import OpenRouterEmbedder
 from app.generation import OpenRouterGenerator
 from app.health import Probes, build_probes, check_components
+from app.history import HistoryNotFound, conversation_detail, list_conversations
 from app.logging import configure_logging
 from app.prompts import load_answer_prompt, load_rewrite_prompt
 from app.retrieval import Retriever
@@ -207,6 +208,21 @@ def create_app(
             return await run_in_threadpool(index.document, document_id)
         except DocumentNotFound as exc:
             raise ApiError(404, "document_not_found", "That document isn't in the corpus.") from exc
+
+    @app.get("/api/conversations")
+    async def conversations_list() -> dict[str, object]:
+        store = get_services().store
+        return {"conversations": await run_in_threadpool(list_conversations, store)}
+
+    @app.get("/api/conversations/{conversation_id}")
+    async def conversation(conversation_id: str) -> dict[str, object]:
+        store = get_services().store
+        try:
+            return await run_in_threadpool(conversation_detail, store, conversation_id)
+        except HistoryNotFound as exc:
+            raise ApiError(
+                404, "conversation_not_found", "That conversation doesn't exist."
+            ) from exc
 
     @app.post("/api/ask", response_model=AskResponse)
     async def ask(request: Request) -> AskResponse:

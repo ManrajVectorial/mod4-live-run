@@ -140,8 +140,9 @@ export type DocumentResponse = {
   sections: CorpusSection[];
 };
 
-// REQ-U10, U14: only links to pages that exist.
+// REQ-U10, U14, U15: only links to pages that exist.
 export const TOP_BAR_LINKS: readonly { href: string; label: string }[] = [
+  { href: "/history", label: "History" },
   { href: "/corpus", label: "Corpus" },
 ];
 
@@ -182,4 +183,48 @@ export function addTurn(conversation: Conversation, question: string, response: 
     conversationId: response.conversation_id,
     turns: [...conversation.turns, { question, response }],
   };
+}
+
+// F8: history (PRD §5.4, §5.5). Sources are the snapshot stored at answer time, which
+// doesn't keep `effective` or `superseded_by` (PRD §6).
+export type StoredSource = Omit<Source, "effective" | "superseded_by">;
+
+export type ConversationSummary = {
+  conversation_id: string;
+  created_at: string;
+  updated_at: string;
+  first_question: string | null;
+  message_count: number;
+  statuses: Status[];
+};
+
+export type StoredMessage =
+  | { message_id: string; role: "user"; content: string; created_at: string }
+  | (Omit<AskResponse, "conversation_id" | "sources"> & { role: "assistant"; sources: StoredSource[] });
+
+export type ConversationDetail = { conversation_id: string; created_at: string; messages: StoredMessage[] };
+
+// REQ-C8: a stored message is shown with the same components as a live one, from what was
+// stored. A superseded snapshot keeps its plain "Superseded" label (U17).
+export function historyResponse(
+  conversationId: string,
+  message: Extract<StoredMessage, { role: "assistant" }>,
+): AskResponse {
+  const { role: _role, sources, ...rest } = message;
+  return {
+    ...rest,
+    conversation_id: conversationId,
+    sources: sources.map((s) => ({ ...s, effective: "", superseded_by: null })),
+  };
+}
+
+// The history page pairs each question with the answer that followed it.
+export function historyTurns(detail: ConversationDetail): Turn[] {
+  const turns: Turn[] = [];
+  let question: string | null = null;
+  for (const m of detail.messages) {
+    if (m.role === "user") question = m.content;
+    else turns.push({ question: question ?? "", response: historyResponse(detail.conversation_id, m) });
+  }
+  return turns;
 }

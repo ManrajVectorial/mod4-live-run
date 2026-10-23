@@ -14,10 +14,12 @@ import {
   documentBanner,
   sectionAnchor,
   degradedMessage,
+  historyTurns,
   indexedLabel,
   splitSources,
   supersededLabel,
   type AskResponse,
+  type ConversationDetail,
   type Source,
 } from "./present.ts";
 
@@ -123,8 +125,31 @@ test("a superseded document names and links its current version (B3, U17)", () =
   assert.equal(documentBanner({ status: "current", superseded_by: null, superseded_on: null }, "x"), null);
 });
 
-test("the top bar links to the pages that exist (U10, U14)", () => {
-  assert.deepEqual(TOP_BAR_LINKS, [{ href: "/corpus", label: "Corpus" }]);
+test("the top bar links to the pages that exist (U10, U14, U15)", () => {
+  assert.deepEqual(TOP_BAR_LINKS, [
+    { href: "/history", label: "History" },
+    { href: "/corpus", label: "Corpus" },
+  ]);
+});
+
+test("a stored history message renders like a live response (C8, U17)", () => {
+  const { effective: _e, superseded_by: _s, ...stored } = superseded;
+  const live = response({});
+  const detail = {
+    conversation_id: "conv-1",
+    created_at: live.created_at,
+    messages: [
+      { message_id: "q1", role: "user" as const, content: "Approval threshold?", created_at: live.created_at },
+      { ...live, conversation_id: undefined, role: "assistant" as const, sources: [stored] },
+    ],
+  };
+  const [turn, ...rest] = historyTurns(detail as ConversationDetail);
+  assert.equal(rest.length, 0);
+  assert.equal(turn.question, "Approval threshold?");
+  assert.equal(turn.response.conversation_id, "conv-1");
+  assert.equal(turn.response.answer, live.answer);
+  assert.equal(citationLabel(turn.response.sources[0]), "Travel and Expense Policy, §4.1 Approval thresholds, v3.0");
+  assert.equal(supersededLabel(turn.response.sources[0]), "Superseded");
 });
 
 test("a conversation keeps its id and turns; Reset starts empty (C3, C6)", () => {

@@ -9,8 +9,8 @@ export class CorpusError extends Error {
   }
 }
 
-// Same-origin through the proxy, like /api/ask.
-async function getJson(path: string): Promise<unknown> {
+// Same-origin through the proxy, like /api/ask. Shared with the history page.
+export async function getJson(path: string, notFound = "That document isn't in the corpus."): Promise<unknown> {
   let response: Response;
   try {
     response = await fetch(path, { cache: "no-store" });
@@ -18,7 +18,7 @@ async function getJson(path: string): Promise<unknown> {
     throw new CorpusError("The service can't be reached. Check your connection and try again.");
   }
   const body = await response.json().catch(() => null);
-  if (response.status === 404) throw new CorpusError("That document isn't in the corpus.", true);
+  if (response.status === 404) throw new CorpusError(notFound, true);
   if (!response.ok) {
     const message = (body as { error?: { message?: string } } | null)?.error?.message;
     throw new CorpusError(typeof message === "string" ? message : "Something went wrong. Try again shortly.");
