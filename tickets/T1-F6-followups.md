@@ -1,7 +1,7 @@
 # T1-F6 — Follow-up questions *(optional)*
 
-**Status:** cut (option C, 2026-10-23). No follow-up floor separates the answerable follow-ups from the off-topic ones, so follow-up questions are not built. See below.
-**Optional:** yes. Dropped from the back if time runs short (after F8 and F7)
+**Status:** in development (2026-10-23). **The cut is reversed: every feature ships.** D9 is amended (amendment 2, below).
+**Optional:** no. Every feature ships (product owner, 2026-10-23)
 **Parent:** [T1](T1.md)
 **Depends on:** F5
 **Decisions it waits on:** D8, D9
@@ -75,7 +75,7 @@ threshold.
 8 frontend tests passed. The 13 single questions still give `eval 10/10 answered, 3/3
 refused` with this code in place.
 
-**Option B tried, then F6 cut (product owner's instruction, 2026-10-23).** The plan was to
+**History: option B tried, then F6 cut (product owner's instruction, 2026-10-23). Superseded by amendment 2 below.** The plan was to
 keep D9 and add a second rule: the follow-up on its own must also clear a floor, set at the
 midpoint of the gap measured on a small follow-up test set. Then F6 would be finished. If no
 floor separated the cases, F6 would be cut instead.
@@ -116,3 +116,18 @@ second failure is the one the product must not have (S5).
   `conversation_id` and appends to it, and an unknown one returns 404. Each question is
   searched and gated on its own. The model sees no earlier context, and the web page asks one
   question at a time.
+
+**D9 amendment 2 (2026-10-23, decided by the product owner).** This reverses the cut.
+- On a follow-up, the chat model first rewrites the new question as a standalone question,
+  using the conversation so far. It only rewrites; it never answers.
+- The search runs on the rewritten question, and the same refusal rule and threshold (0.5092)
+  apply to it.
+- The first question of a conversation is never rewritten.
+- The check is the six-case follow-up set in `backend/eval/followups.md`, plus the Done-when
+  line.
+
+**This departs from REQ-R6 and ADR-001.** A refused follow-up has now made one chat-model
+call, the rewrite. The locked PRD (REQ-R6) and ADR-001 put the refusal rule before any model
+call. The model still decides nothing, because the rule judges the rewritten question. First
+questions are unchanged. If you want the documents to match, REQ-R6 needs an amendment, which
+only you can approve (the PRD is protected).
